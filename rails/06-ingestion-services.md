@@ -31,7 +31,7 @@ third-party APIs, and hand structured JSON off to `GameStatsExtractor` /
   - [ScheduleService](#scheduleservice)
   - [NcaaScheduleService](#ncaascheduleservice)
   - [NcaaScoreboardService](#ncaascoreboardservice)
-  - [EspnScoreboardService](#espnscoreboardservice)
+  - [EspnScoreboardService — DEAD CODE](#espnscoreboardservice--dead-code-tests-only)
   - [CloudflareScheduleService (Legacy Fallback)](#cloudflarescheduleservice-legacy-fallback)
 - [URL Discovery](#url-discovery)
 - [Roster Ingestion](#roster-ingestion)
@@ -585,22 +585,20 @@ Key behaviors:
   contest_id over. Has an early-out if `game.ncaa_contest_id == contest_id.to_s`
   to prevent swap loops between runs.
 
-### EspnScoreboardService
+### EspnScoreboardService — **DEAD CODE (tests-only)**
 
 **File:** `app/services/espn_scoreboard_service.rb`
 
-Secondary scoreboard source. Only UPDATES existing games (home/away scores +
-state) — never creates. Skips ambiguous doubleheaders where multiple eligible
-games exist between the same teams on the same date.
+> **⚠️ This service has zero production callers.** Verified 2026-04-19: the only references to `EspnScoreboardService` or `sync_scores` anywhere in the app, jobs, rake tasks, lib, config, or initializers are the service file itself plus its own test file (`test/services/espn_scoreboard_service_test.rb`). The Java scraper also contains zero ESPN references. The scoreboard fetch path production uses `NcaaScoreboardService` exclusively.
+>
+> The code is kept because (a) the tests still pass, and (b) if NCAA's API ever goes down we'd want ESPN as a fallback. But as of this writing **it is not called from any runtime path** — do not cite it in pipeline docs without that caveat.
 
-- Base: `https://site.api.espn.com/apis/site/v2/sports/baseball/college-softball/scoreboard?dates=YYYYMMDD&limit=200`
-- `ESPN_SLUG_OVERRIDES` — large static map of ESPN team location strings to
-  our Team slugs (lines 5-166) for names that don't resolve automatically.
-  Also covers "State" → "St." normalization, slugify-with-`state`-to-`st`
-  variants.
-- `espn_status_to_state`: `STATUS_FINAL` → `final`, `STATUS_IN_PROGRESS` →
-  `live`, anything else → `scheduled`. Only `final` / `live` events update
-  scores.
+If ever re-introduced, the shape is:
+
+- Base URL: `https://site.api.espn.com/apis/site/v2/sports/baseball/college-softball/scoreboard?dates=YYYYMMDD&limit=200`
+- `ESPN_SLUG_OVERRIDES` — static map of ESPN team location strings to our `Team` slugs (lines 5-166). Also covers `State` → `St.` normalization and slugify-with-`state`-to-`st` variants.
+- `espn_status_to_state`: `STATUS_FINAL` → `final`, `STATUS_IN_PROGRESS` → `live`, anything else → `scheduled`. Only `final` / `live` events would update scores.
+- Only UPDATES existing games (home/away scores + state) — never creates. Skips ambiguous doubleheaders where multiple eligible games exist between the same teams on the same date.
 
 ---
 

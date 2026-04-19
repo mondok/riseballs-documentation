@@ -10,7 +10,7 @@ flowchart LR
     Rails <-->|ActiveRecord / JPA<br/>same DB| DB[(Postgres<br/>riseballs_db)]
     Scraper <-->|JPA write path| DB
     Predict -->|read-only| DB
-    Scraper -->|Jsoup / HttpClient| External[(Sidearm, WMT,<br/>NCAA, ESPN,<br/>WordPress)]
+    Scraper -->|Jsoup / HttpClient| External[(Sidearm, WMT,<br/>NCAA, WordPress)]
     Rails -->|legacy, preferred path<br/>is Java scraper| External
 ```
 

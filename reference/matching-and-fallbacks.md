@@ -268,12 +268,12 @@ NcaaScheduleService  (NCAA GraphQL — 6-strategy matcher + contest-ID dedup)
     ↓
 NcaaScoreboardService  (with verify_contest_assignment for DH)
     ↓
-EspnScoreboardService
-    ↓
 ScheduleService / CloudflareScheduleService  (LEGACY)
     ↓
 AiScheduleService  (LLM — last resort, has a scoped-variable bug at line 104)
 ```
+
+> `EspnScoreboardService` used to sit between `NcaaScoreboardService` and the legacy schedule services as an additional live-score update source, but as of 2026-04-19 it has **zero production callers** (tests-only). See [rails/06-ingestion-services.md](../rails/06-ingestion-services.md#espnscoreboardservice--dead-code-tests-only).
 
 **Where:** `app/services/*_schedule_service.rb`.
 See [rails/06-ingestion-services.md](../rails/06-ingestion-services.md).
@@ -305,7 +305,7 @@ See [pipelines/07-prediction-pipeline.md](../pipelines/07-prediction-pipeline.md
 | Box score | WMT API | local scraper HTML | Playwright HTML → plain HTTP → rediscovery | AI LLM extraction |
 | PBP (live) | cached_games | Athletics | WMT | negative cache 503 |
 | PBP (proactive) | `PbpOnFinalJob` w/ polynomial retry | — | — | operator rake task |
-| Schedule | Java `TeamScheduleSyncService` | `ScheduleReconciliationJob` (daily) | `StuckScheduleRecoveryJob` (hourly) | NCAA/ESPN Rails services |
+| Schedule | Java `TeamScheduleSyncService` | `ScheduleReconciliationJob` (daily) | `StuckScheduleRecoveryJob` (hourly) | `NcaaScheduleService` / `NcaaScoreboardService` Rails fallback (ESPN service is dead code, tests-only) |
 | Team name → slug (Java) | `TeamAlias` | exact slug | name/longName | suffix strip + state abbr |
 | Team name → slug (Rails) | `TeamAlias` | exact slug | case-insensitive name | fuzzy match |
 | Opponent game match | unclaimed + game_number | unclaimed any | claimed + game_number | claimed first |

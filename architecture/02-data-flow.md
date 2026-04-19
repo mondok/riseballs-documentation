@@ -48,7 +48,7 @@ See [pipelines/01-game-pipeline.md](../pipelines/01-game-pipeline.md) and [rails
 **Trigger:** `Api::ScoreboardController` requests — driven by the frontend scoreboard polling (every 30–60s per page).
 
 The scoreboard render path is a fan-out via `Concurrent::FixedThreadPool`:
-1. For each game-of-interest, call `EspnScoreboardService` / `NcaaScoreboardService` / other sources in parallel (POOL_SIZE=10, 15s joint wait).
+1. For each game-of-interest, call `NcaaScoreboardService` and other sources in parallel (POOL_SIZE=10, 15s joint wait). (`EspnScoreboardService` exists as a secondary source but is **currently dead code** — tests-only, no production callers as of 2026-04-19. See [rails/06-ingestion-services.md](../rails/06-ingestion-services.md#espnscoreboardservice--dead-code-tests-only).)
 2. Merge results; extract live scores, inning, pitcher ids.
 3. Writes back to `Game`: `state = live`, `home_score`, `away_score`, `current_inning`.
 
