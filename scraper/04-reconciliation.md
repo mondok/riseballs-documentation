@@ -192,7 +192,54 @@ The NCAA GraphQL API is the authoritative source for game dates via `ncaa_contes
        - Both final, stat fingerprints match → writer.removeDuplicate (confirmed dupe)
        - Both final, stat fingerprints differ → writer.correctDate (doubleheader, move)
        - One or both scheduled → writer.correctDate (safe, GameDedupJob handles any follow-up)
+4. Create-or-assign phase: for each NCAA contest with no matching Game,
+   call NcaaContestCandidateResolver.findCandidate. If matched,
+   writer.assignNcaaContest fills ncaa_contest_id + start_time_epoch
+   (fill-blank; never overwrites). Claim-aware: a Game enriched earlier
+   in the pass is not a candidate for later contests. Unmatched ->
+   log-only; no review queue.
 ```
+
+### Phase 4 (create-or-assign) in detail
+
+This phase owns all contest-id attachment for Games that don't yet have one.
+Matches the architectural direction: Rails no longer writes `ncaa_contest_id`.
+
+`NcaaContestCandidateResolver.findCandidate(contest, contestsOnSameDate, claimedGameIds)`:
+
+1. **Slug normalization.** NCAA's `seoname` is first looked up directly against
+   `Team.slug` and, on miss, run through `OpponentResolver` (TeamAlias + fuzzy).
+   Both home and away must resolve; otherwise the contest is skipped (log
+   `ncaa_unmatched_team`).
+2. **Exact date match.** `gameRepository.findByDateAndTeams(date, home, away)`.
+   Filters out Games that already hold a contest_id OR are in `claimedGameIds`.
+   Single candidate -> return it.
+3. **Doubleheader pairing.** Multiple unclaimed candidates on the same key:
+   sort sibling contests by `startTimeEpoch` (nulls last), sort Games by
+   `game_number`, index-align. The current contest picks the Game at its own
+   sibling-index. This kills the historical bug where Ruby's
+   `find_by(date, home, away)` always grabbed game 1 and game 2 silently lost
+   its contest-id.
+4. **Date flex.** If none of the above hit, retry exact match at `date -1, +1,
+   -2, +2` days.
+
+No review queue. An unresolved contest logs `ncaa_contest_unmatched` and gets
+retried next cron run. Fix path is adding a `TeamAlias`, not human triage.
+
+### Create-time enrichment (Phase 3 companion in ScheduleReconciliationOrchestrator)
+
+At the start of `reconcileAll`, the orchestrator calls
+`NcaaApiClient.contestsForSeason()` once and passes the result to
+`ReconciliationExecutor.setContestLookup(...)`. Whenever `executeCreate` builds
+a `GameCreationRequest`, it consults the lookup by `(date, sorted slugs)` and
+threads `ncaa_contest_id` + `start_time_epoch` in when there is a single
+unambiguous contest. Doubleheader-ambiguous keys (two contests on the same
+day/teams) are skipped here and picked up by the Phase 4 claim-aware pass.
+
+This is why newly-created Games land enriched on the same day the schedule
+page first surfaces them, instead of relying on a separate sync job. Combined
+with the stable `/game/rb_<id>` URL scheme on the Rails side, the public URL
+for a Game never flips when `ncaa_contest_id` is filled in later.
 
 ### `verifyDateChange` — team schedules are higher-priority than NCAA
 
@@ -223,20 +270,25 @@ A conflict game qualifies as an "empty shell" (safe merge target) if `ncaaContes
 
 ### `NcaaDateReconciliationWriter`
 
-Four `@Transactional` methods:
+Five `@Transactional` methods:
 - `updateEpoch(game, epoch)` — time-only update.
 - `correctDate(game, newDate, epoch)` — moves game, sets `dataFreshness="ncaa_corrected"`, deletes any ghost on the old date (scheduled/cancelled, no contestId, no scores, created after this game).
 - `removeDuplicate(staleGame, keepGame, contest)` — transfers `GameTeamLink`s, clears `staleGame.ncaaContestId` to free the constraint, moves contestId to `keepGame`, then deletes the stale one. Needs an explicit `flush()` between the two saves to avoid unique constraint collision.
-- `createReview(game, contest, conflictGame?, reviewType, reason)` — idempotent GameReview insert. Deduplicates on `(gameId, status=pending, reviewType)`.
+- `createReview(game, contest, conflictGame?, reviewType, reason)` — idempotent GameReview insert. Deduplicates on `(gameId, status=pending, reviewType)`. (Only emitted by the date-move phase; the create-or-assign phase does not create reviews.)
+- `assignNcaaContest(game, contest)` — fill-blank write of `ncaa_contest_id` and `start_time_epoch` on a Game that previously had neither. UNIQUE pre-check via `findByNcaaContestId`. Sets `dataFreshness="ncaa_enriched"` as the Java-owned create-or-assign marker.
 
 ### Result DTO
 
 ```java
 record NcaaDateReconciliationResult(
     int dateCorrected, int duplicatesRemoved, int ncaaWrong, int flaggedForReview,
-    int skipped, int noChange, int errors, boolean dryRun, long elapsedMs
+    int skipped, int noChange, int assigned, int unmatched, int errors,
+    boolean dryRun, long elapsedMs
 )
 ```
+
+- `assigned` — contests newly attached to an existing Game via the create-or-assign phase.
+- `unmatched` — contests with no Game candidate under the match ladder. Non-NCAA-tracked teams (NAIA / D3 / JUCO) dominate this number; the expected floor.
 
 ---
 
