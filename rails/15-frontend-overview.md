@@ -58,17 +58,21 @@ riseballs/app/javascript/
     AuthContext.jsx        user state + signIn/signUp/signOut
   lib/
     api.js                 axios wrappers (single source of truth for endpoints)
-    statbroadcast.js       URL parsing for StatBroadcast / SidearmStats feeds
+    liveOverlay.js         fetches live.riseballs.com/scoreboard (4s AbortController,
+                           silent degradation) and merges overlay events onto Rails scoreboard.
+                           Added 2026-04-19 (mondok/riseballs#83).
     usePageTitle.js        tiny hook: document.title = "<title> - Riseballs.com"
     exportCsv.js           CSV download helpers
     exportPdf.js           PDF export (jspdf + html2canvas)
   pages/
     HomePage.jsx Dashboard.jsx Scoreboard.jsx TeamsIndex.jsx TeamDetail.jsx
-    GameDetail.jsx Rankings.jsx Standings.jsx RPI.jsx Stats.jsx LiveView.jsx
+    GameDetail.jsx Rankings.jsx Standings.jsx RPI.jsx Stats.jsx
     PlayerSearch.jsx PlayerDetail.jsx Analytics.jsx PitchAnalytics.jsx
     SignIn.jsx SignUp.jsx
   controllers/             Stimulus controllers (not used by the SPA)
 ```
+
+**Deleted 2026-04-19 (mondok/riseballs#85 part 1):** `pages/LiveView.jsx`, `lib/statbroadcast.js`, the `addToLiveView` button on `GameCard`, and the `fetchLiveStats` 10s poller on `Scoreboard`. The `/live` route is gone from `App.jsx` and the "Live" nav entry is gone from `Layout.jsx`.
 
 There is **no dedicated `admin/` pages folder in the SPA**. Admin screens (`/admin/boxscores`, `/admin/reviews`, `/admin/jobs`, `/sidekiq`) are plain Rails views under `app/views/admin/` and are routed outside the React catch-all; see `config/routes.rb`.
 
@@ -133,18 +137,19 @@ createRoot(root).render(
 | `/rankings/standings`     | `RankingsLayout` -> `Standings`    | public            |
 | `/rpi`                    | `RPI`                              | `RequireAuth`     |
 | `/stats`                  | `Stats`                            | public            |
-| `/live`                   | `LiveView`                         | `RequireAuth`     |
 | `/players`                | `PlayerSearch`                     | public            |
 | `/players/:slug`          | `PlayerDetail`                     | public            |
 | `/analytics`              | `Analytics`                        | `RequireAuth`     |
 | `/pitch-analytics/:slug`  | `PitchAnalytics`                   | public (hardcoded not in nav) |
 | `/sign-in`, `/sign-up`    | `SignIn`, `SignUp`                 | public            |
 
+The `/live` route was removed in mondok/riseballs#85 (2026-04-19) along with `LiveView.jsx`.
+
 `RequireAuth` returns `null` while auth is loading, redirects to `/sign-in` with `state={{ returnTo: location.pathname }}` when there is no user, and renders `children` otherwise.
 
 `Layout.jsx` provides the global chrome:
 
-- Sticky header with the Riseballs wordmark and `NAV_ITEMS` (Dashboard, Scoreboard, Teams, Players, Rankings, RPI, Stats, Live, Analytics).
+- Sticky header with the Riseballs wordmark and `NAV_ITEMS` (Dashboard, Scoreboard, Teams, Players, Rankings, RPI, Stats, Analytics). The "Live" entry was removed in mondok/riseballs#85.
 - Each nav item can be flagged `authRequired: true` (hidden for logged-out users) or `adminOnly: true` (hidden for everyone except the hard-coded `ADMIN_EMAIL = "matt.mondok@gmail.com"` — only RPI uses this).
 - Dark-mode toggle persists to `localStorage.theme` and toggles `documentElement.classList("dark")`.
 - Mobile burger menu collapses on route change.
@@ -180,7 +185,6 @@ Each group exposes named methods so call sites don't build URLs by hand:
 | `dashboard`      | `index`                                                                                      |
 | `scoreboard`    | `index`, `predictions`                                                                        |
 | `games`          | `show`, `boxscore`, `playByPlay`, `teamStats`, `batch`, `prediction`                         |
-| `liveStats`      | `batch`, `boxscoreBatch`, `sidearmBatch`, `resolve`                                          |
 | `rankings`       | `index`                                                                                      |
 | `stats`          | `index`                                                                                      |
 | `rpi`            | `index`                                                                                      |
@@ -188,6 +192,8 @@ Each group exposes named methods so call sites don't build URLs by hand:
 | `analytics`      | `leaderboard`, `war`                                                                         |
 | `pitchAnalytics` | `show(teamSlug)`                                                                             |
 | `facts`          | `index(division)`                                                                            |
+
+The former `liveStats` wrapper (`batch`, `boxscoreBatch`, `sidearmBatch`, `resolve`) was removed in mondok/riseballs#85 part 1. Live-overlay data is now fetched **outside the axios `api` client** via `lib/liveOverlay.js`, which hits `https://live.riseballs.com/scoreboard?date=YYYY-MM-DD` directly (cross-origin, CORS-allowed) with a 4s `AbortController` timeout. Failures degrade silently — the Rails-sourced scoreboard renders regardless.
 
 ### Special status handling
 
@@ -255,7 +261,7 @@ For production, `bin/rails assets:precompile` invokes both build scripts (wired 
 See the routing table above for the exhaustive list. Summary:
 
 - **Public content:** `/`, `/scoreboard`, `/teams`, `/teams/:slug`, `/games/:id`, `/rankings`, `/rankings/standings`, `/stats`, `/players`, `/players/:slug`, `/pitch-analytics/:slug`.
-- **Auth-required:** `/dashboard`, `/live`, `/analytics`, `/rpi` (admin-only in the nav but the route guard is just `RequireAuth`).
+- **Auth-required:** `/dashboard`, `/analytics`, `/rpi` (admin-only in the nav but the route guard is just `RequireAuth`).
 - **Auth pages:** `/sign-in`, `/sign-up`.
 
 All URLs are user-visible and bookmarkable. Filter and pagination state on `Scoreboard` (and increasingly elsewhere) is synced to `useSearchParams`, so page reload preserves view — see `Scoreboard.jsx`'s `updateParams` helper for the pattern (strips defaults to keep URLs clean).

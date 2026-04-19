@@ -56,7 +56,7 @@ The guard in `Api::GamesController#boxscore` that rejects a discovered box score
 `dokku enter riseballs web '...'` runs inside the existing web container with internal-network access (can reach `riseballs-scraper.web:8080`). `dokku run riseballs '...'` creates a one-off container **without** internal-network access. Anything that calls Java must use `dokku enter`. See [operations/database-access.md](../operations/database-access.md).
 
 ### External ID (`rb_*`)
-When a game has no known external source ID (NCAA contest ID, WMT game ID, Sidearm URL), it's given an internal ID prefixed `rb_` (e.g., `rb_227658`). These are orphans in terms of scraping — they only exist in our DB. Historically a source of PBP-missing bugs (issue #66 context).
+The stable public id for any game, used as the `gameID` in scoreboard JSON and in frontend URLs (`/games/rb_<id>`). Always `"rb_<games.id>"`. Decoupled from NCAA contest id as of 2026-04-19 (mondok/riseballs commit `263a684`) so URL continuity survives NCAA id changes. See [rails/01-models.md](../rails/01-models.md) `Game#url_id`. Historically a source of PBP-missing bugs when it was used as a fallback for truly orphan games (issue #66 context).
 
 ### Fallback path
 The explicit ordered list of sources tried if the primary fails. See [matching-and-fallbacks.md](matching-and-fallbacks.md) for every one.
@@ -115,7 +115,10 @@ Two phases of `TeamGameMatcher`. `match_scheduled` creates shell Games for upcom
 String tag (e.g., `2026-04-01-v3`) identifying a trained XGBoost artifact bundle. Part of cache key, so retrain invalidates cleanly.
 
 ### NCAA contest ID
-NCAA's unique ID for a game, stored on `games.ncaa_contest_id` when available. Authoritative for date reconciliation.
+NCAA's unique ID for a game, stored on `games.ncaa_contest_id` when available. Authoritative for date reconciliation. Also emitted in scoreboard JSON as the separate field `ncaaContestId` (added 2026-04-19) so the live-overlay reconciler can key on it. See also "url_id" / "rb_*" for the public form of the id, which is independent.
+
+### ncaaContestId (scoreboard JSON field)
+The scoreboard API response field that carries the NCAA contest id separately from the public `gameID`. Introduced 2026-04-19. The `riseballs-live` overlay uses it as the primary match key; the frontend merge in `lib/liveOverlay.js` uses it first, with `(homeSlug, awaySlug, gameNumber)` as fallback.
 
 ### Negative cache (PBP)
 `Rails.cache` key `pbp_miss:<gid>` with 5-minute TTL — set when a live PBP fetch fails. Prevents repeated slow Sidearm timeouts for the same broken game.
@@ -151,7 +154,21 @@ Rails service (`app/services/predict_service_client.rb`) that calls the Python P
 Integer `teams.rank` populated by `SyncRankingsJob` from NCAA JSON. Used to strip "#5" prefixes before dedup. (Column is `rank` — don't confuse with the app model accessor.)
 
 ### Reconciliation
-Nightly deep comparison between our DB and source pages. Schedule reconciliation + NCAA date reconciliation. See [pipelines/06-reconciliation-pipeline.md](../pipelines/06-reconciliation-pipeline.md).
+Comparison between our DB and source pages to correct drift. Four paths: NCAA contest-id enrichment (every 20 min + nightly), NCAA date reconciliation (2:30 AM daily), schedule reconciliation (3 AM daily), game deduplication (every 15 min). See [pipelines/06-reconciliation-pipeline.md](../pipelines/06-reconciliation-pipeline.md).
+
+The word "reconciliation" also refers to the in-memory merge that `riseballs-live`'s `ScoreboardReconciler` does on every `/scoreboard` request — a pure function over the NCAA + ESPN feeds that produces the unified event list. See [live/02-architecture.md](../live/02-architecture.md).
+
+### Reconciler (overlay)
+Class `ScoreboardReconciler` in `riseballs-live`. Pure function: `(ncaaEvents, espnEvents, slugResolver) → List<ReconciledEvent>`. Match rules: `ncaaContestId` primary, `(homeSlug, awaySlug, startTimeEpoch within 30 min)` fallback, reversed-slug rescue with score swap, ambiguity skip. State escalation: `max(ncaa.state, espn.state)` ordered `scheduled < live < final`. Distinct from the Rails `TeamGameMatcher` (which matches opposing team_games rows) and the `ScheduleComparisonEngine` in Java (which diffs team schedule pages against the DB).
+
+### riseballs-live
+Standalone stateless Java Spring Boot service at `https://live.riseballs.com`. Shipped 2026-04-19 (mondok/riseballs-live#1). Serves a single endpoint (`GET /scoreboard?date=`) returning reconciled NCAA + ESPN live-score events. No DB, no Redis, no internal hostnames in its container env — the "prison" architecture is enforced at the Dokku config level. Consumed directly by the browser; not called by Rails. See [live/00-overview.md](../live/00-overview.md).
+
+### Overlay (live-score)
+The transient live-score data layered on top of the Rails-sourced scoreboard by `lib/liveOverlay.js`. Affects only non-final games. If the overlay service is down or slow, the scoreboard still renders from Rails data alone — degradation is silent.
+
+### Fresh / stale / negative cache (overlay)
+The three Caffeine cache tiers inside `riseballs-live`. **Fresh** (30s TTL): served immediately on hit. **Stale** (5m TTL): served with `source: "stale"` when upstreams time out and we have a recent payload. **Negative** (10s TTL): returned on hard upstream failure to keep us from hammering a broken upstream. All three TTLs are configurable via `riseballs.cache.*` properties. Separate from the PBP negative cache in Rails (`pbp_miss:<gid>`), which is unrelated.
 
 ### Scheduled (game state)
 `Game.state == "scheduled"`. Not yet played.

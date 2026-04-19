@@ -1,20 +1,21 @@
 # Riseballs — System Documentation
 
-End-to-end reference for the Riseballs platform: a college baseball stats, standings, and prediction site. Three cooperating services share one Postgres database.
+End-to-end reference for the Riseballs platform: a college softball stats, standings, and prediction site. Four cooperating services: three share one Postgres database, and a fourth stateless overlay service is called directly by the browser.
 
 This documentation is a **knowledge graph**: every subsystem file cross-links to the pipelines it participates in and the references it depends on. Use the index below to enter at any angle.
 
 ---
 
-## Services (the three apps)
+## Services (the four apps)
 
 | App | Lang / stack | Role | Docs |
 |-----|--------------|------|------|
 | `riseballs` | Rails 8 + Sidekiq + React (in-repo SPA) | API, web, cron, all write paths via ActiveJob | [rails/](rails/) |
 | `riseballs-scraper` | Java 21 / Spring Boot 3.4 | Heavy scraping, reconciliation, roster/coach augment, writes directly to Postgres via JPA | [scraper/](scraper/) |
 | `riseballs-predict` | Python 3.12 / FastAPI + XGBoost | Win-probability, expected-runs, keys-to-victory, scenario explanations | [predict/](predict/) |
+| `riseballs-live` | Java 21 / Spring Boot (stateless) | Live-score overlay: reconciles NCAA + ESPN public scoreboard feeds into a single event list. No DB, no Redis, no internal hostnames. Consumed directly by the browser. Shipped 2026-04-19. | [live/](live/) |
 
-Rails is the orchestrator. It owns cron (Sidekiq cron), owns the HTTP surface, and delegates heavy scraping/reconciliation to the Java scraper over the internal Dokku network (`http://riseballs-scraper.web:8080`). It calls the Python predict service over HTTP for live predictions (`PREDICT_SERVICE_URL`).
+Rails is the orchestrator. It owns cron (Sidekiq cron), owns the HTTP surface for authoritative state, and delegates heavy scraping/reconciliation to the Java scraper over the internal Dokku network (`http://riseballs-scraper.web:8080`). It calls the Python predict service over HTTP for live predictions (`PREDICT_SERVICE_URL`). It does **not** call `riseballs-live` — the browser calls it directly in parallel with Rails.
 
 See [architecture/00-system-overview.md](architecture/00-system-overview.md) for the big picture and [architecture/01-service-boundaries.md](architecture/01-service-boundaries.md) for the "who owns what" split.
 
@@ -58,6 +59,13 @@ See [architecture/00-system-overview.md](architecture/00-system-overview.md) for
 - [05-repositories-and-data.md](scraper/05-repositories-and-data.md) — JPA repositories and "who writes what"
 - [06-scheduled-jobs.md](scraper/06-scheduled-jobs.md) — concurrency model (virtual threads + semaphore)
 - [07-config-and-deployment.md](scraper/07-config-and-deployment.md) — `application.yml`, Dockerfile, Dokku
+
+### [live/](live/) — the live-score overlay service (riseballs-live)
+
+- [00-overview.md](live/00-overview.md) — what the service does, the prison architecture
+- [01-endpoints.md](live/01-endpoints.md) — `/scoreboard`, `/health`, CORS preflight
+- [02-architecture.md](live/02-architecture.md) — components, caches, threading model, reconciler
+- [03-deployment.md](live/03-deployment.md) — Dokku app, Cloudflare tunnel, config tunables
 
 ### [predict/](predict/) — the Python predict service (riseballs-predict)
 
@@ -142,6 +150,7 @@ Three review agents (coverage, accuracy, navigability) audited the docs after in
 
 ## Scope disclaimers
 
-- This tree snapshots the system as of ~2026-04-18. Fast-moving areas: PBP repair paths, NCAA date reconciliation, matcher stabilization (GH issues #44–#48).
-- The project's `how_things_work.md` files (in `riseballs/`, `riseballs-predict/`, and `riseballs-parent/`) are the living logs — they are narrative and sometimes ahead of this tree. When they conflict with this documentation, those are authoritative for recent changes and this tree is authoritative for the architectural shape.
+- This tree snapshots the system as of **2026-04-19**. Major changes that day: the new `riseballs-live` service shipped (mondok/riseballs-live#1); the Ruby StatBroadcast/Sidearm live-stats machinery was deleted (mondok/riseballs#85); `gameID` was decoupled from NCAA contest id; `ncaaContestId` and `gameNumber` were added to the scoreboard response (mondok/riseballs#83); 7 columns + 3 indexes dropped from `games` and `game_team_links`; ghost-game guards added for `ncaa_contest_id`-tagged games; `NcaaGameDiscoveryJob` re-enabled after a week-long outage.
+- The project's `how_things_work.md` files (in `riseballs/`, `riseballs-predict/`, `riseballs-live/`, and `riseballs-parent/`) are the living logs — they are narrative and sometimes ahead of this tree. When they conflict with this documentation, those are authoritative for recent changes and this tree is authoritative for the architectural shape.
+- Anything tagged **DELETED** (e.g., `EspnScoreboardService`, `LiveStatsController`, `LiveView.jsx`, `StatBroadcastService`, `SidearmStatsService`, `GameIdentityService`, Ruby `NcaaScoreboardService` / `NcaaScheduleService`) is gone from the code. Docs retain a deleted stub to preserve link integrity and explain what replaced it.
 - Anything tagged **DEPRECATED** is still in the codebase but should not be used going forward (e.g., `AiWebSearchBoxScoreService`, `AiExtractionFetcher`).

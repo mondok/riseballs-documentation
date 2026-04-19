@@ -74,9 +74,6 @@ Canonical, single-row-per-game record that is shared across both competing teams
 | `start_time` / `start_time_epoch` | string / bigint | |
 | `ncaa_game_id` | string | legacy NCAA contest key |
 | `ncaa_contest_id` | bigint | primary NCAA contest key (new); unique where present |
-| `sb_event_id` | string | StatBroadcast event id; unique where present |
-| `sidearm_game_id` | string | legacy single-team sidearm id; unique where present |
-| `live_stats_url` / `live_stats_feed_url` | string | |
 | `home_box_score_id` / `away_box_score_id` | string | team-scoped boxscore ids; unique per `(team_slug, box_score_id)` |
 | `discovery_source` | string | how Rails learned about the game |
 | `data_freshness` | string, default `"unknown"` | `"ncaa_corrected"` and `"reconciled"` freeze date updates (see `Game.update_game_from_schedule` at `game.rb:184`) |
@@ -106,7 +103,7 @@ No `belongs_to :team` — both teams are referenced by slug strings (`home_team_
 - `inclusion`: `state` in `STATES`
 - `numericality`: `game_number > 0`
 - `uniqueness`: `home_team_slug` scoped to `(game_date, away_team_slug, game_number)` — mirrors `idx_games_natural_key`
-- `uniqueness`: `ncaa_game_id`, `sb_event_id` (both `allow_nil`)
+- `uniqueness`: `ncaa_game_id` (`allow_nil`)
 - Custom `team_slugs_must_exist` — only runs for `division == "d1" && new_record?` (D2/D3 Teams rows may lag)
 - Custom `teams_must_differ`
 - Custom `cancelled_games_must_not_have_scores`
@@ -118,12 +115,11 @@ No `belongs_to :team` — both teams are referenced by slug strings (`home_team_
 ### Class Methods
 
 - **`find_by_any_id(id)`** — `game.rb:100`. Accepts:
-  - `"rb_<id>"` → internal Rails id
-  - `ncaa_contest_id` (preferred)
+  - `"rb_<id>"` → internal Rails id (**canonical public form since 2026-04-19**; `Game#url_id` returns this, and `Api::ScoreboardController` emits it as `gameID`)
+  - `ncaa_contest_id` (preferred external key; `ncaaContestId` in scoreboard JSON)
   - `ncaa_game_id` (legacy)
-  - `sb_event_id`
   - bare numeric → `id`
-  Used by every API controller that takes a `:game_id` param.
+  Used by every API controller that takes a `:game_id` param. Legacy `/game/<contest_id>` URLs continue to resolve here; the response normalizes the outbound form to `rb_<id>`.
 
 - **`find_or_create_from_schedule(team, game_hash)`** — `game.rb:118`. Three-step lookup that prevents the classic "both teams scrape the same game and create two rows" bug:
   1. `GameIdentifier.find_by(team_slug, sidearm_id)` → existing game (re-crawl fast-path).
@@ -146,6 +142,7 @@ No `belongs_to :team` — both teams are referenced by slug strings (`home_team_
 - State helpers: `live?`, `final?`, `scheduled?` — `game.rb:52-54`
 - `home_team` / `away_team` — memoized `Team.find_by(slug: …)`
 - `best_external_id` — `ncaa_contest_id` → `ncaa_game_id` → `"rb_#{id}"`. This is the cache key used by `CachedGame.store_for_game`.
+- `url_id` — **stable public id** for this game. Always returns `"rb_<id>"`. Decoupled from `ncaa_contest_id` as of mondok/riseballs commit `263a684` (2026-04-19). Use this in any outbound URL / scoreboard payload. `Api::ScoreboardController` sets `gameID: game.url_id` and `ncaaContestId: game.ncaa_contest_id` as separate fields so the live-overlay reconciler can key off the NCAA id without our URL scheme being tied to NCAA.
 - `box_score_id_for(team_slug)` / `set_box_score_id(team_slug, id)` — routes to `home_box_score_id` or `away_box_score_id`.
 - `preferred_box_score` — delegates to `CachedGame.fetch_team_boxscore` (home first, then away).
 
@@ -215,15 +212,23 @@ Join record attaching per-team URLs and external IDs (sidearm, StatBroadcast, li
 |---|---|---|
 | `game_id` | bigint, NOT NULL | FK → `games.id`, cascade delete |
 | `team_slug` | string, NOT NULL |  |
-| `sidearm_game_id` | string |  |
-| `box_score_url` / `live_stats_url` / `live_stats_feed_url` | string |  |
-| `sb_event_id` | string |  |
+| `sidearm_game_id` | string | **Kept** (23,733 rows populated as of 2026-04-19). Actively used by the Java scraper for box-score URL discovery — do not drop. |
+| `box_score_url` | string |  |
 
 ### Indexes
 
 - Unique `(game_id, team_slug)` — one link per team per game.
-- Unique partial `(sb_event_id)` where not null.
 - Unique partial `(team_slug, sidearm_game_id)` where not null (`idx_game_team_links_team_sidearm`).
+
+### What was dropped 2026-04-19 (mondok/riseballs#85 part 2)
+
+Migration `2026_04_19_*` dropped four columns and one index from `game_team_links`:
+
+- `live_stats_url`
+- `live_stats_feed_url`
+- `sb_event_id` (StatBroadcast event id) + its partial index
+
+These columns were populated by the StatBroadcast / SidearmStats live-stats machinery that was removed in mondok/riseballs#85 part 1 (LiveView page, `/api/live_stats/*`, `GameIdentityService`, etc.). The corresponding JPA mappings were removed from `GameTeamLink.java` in riseballs-scraper PR #12. `sidearmGameId` is the only retained external id on this table.
 
 ### Associations / Validations
 

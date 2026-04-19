@@ -17,7 +17,8 @@ flowchart TD
     Branch -->|no| SyncToday[Step 1b: Per-team sync for<br/>today's unfinished games<br/>loop per team_slug]
     SyncAll --> Match
     SyncToday --> Match
-    Match[Step 2: TeamGameMatcher<br/>.match_scheduled<br/>.match_all] --> Backfill
+    Match[Step 2: TeamGameMatcher<br/>.match_scheduled<br/>.match_all] --> Reconcile
+    Reconcile[Step 2.5: reconcile_stuck_states<br/>flip stuck scheduled/live -> final<br/>via boxscore / PBP / 4h time heuristic] --> Backfill
     Backfill[Step 3: fetch_missing_boxscores<br/>→ BoxScoreBackfillJob /<br/>JavaScraperClient.scrape_batch<br/>POST /api/scrape/boxscores] --> Cleanup
     Cleanup[Step 4: clean_orphans<br/>delete cancelled/postponed<br/>team_games + shell Games] --> Done([end])
 ```
@@ -60,6 +61,22 @@ Rails runs `TeamGameMatcher`:
 
 Details: [rails/08-matching-services.md](../rails/08-matching-services.md).
 
+### Step 2.5 — Stuck-state reconciliation (issue #86)
+
+After `match_all` and before box score backfill, `reconcile_stuck_states` flips `Game.state` to `final` for games where:
+
+- `state IN ('scheduled', 'live')` and `game_date IN (today, yesterday)`
+- AND any of:
+  1. Cached `athl_boxscore` is good + scores match (`BoxscoreFetchService.good_boxscore?` + `scores_match?`).
+  2. Cached `athl_play_by_play` is complete (`BoxscoreFetchService.pbp_is_complete?` -- >=40 real plays + `CachedGame.pbp_quality_ok?`).
+  3. `start_time_epoch < 4.hours.ago` (time heuristic fallback).
+
+Forward-only: never demotes `final` / `postponed` / `cancelled`. Uses `update!` so the `after_update_commit` callback fires and `PbpOnFinalJob` gets enqueued.
+
+Why it exists: WMT-platform teams (auburn, vt, etc.) derive `TeamGame.state` from score-presence in the WMT schedule feed, which lags the actual game end by 60-120+ min. Without this step `fetch_missing_boxscores` would skip recently-ended games and users would see "No box score data available" for hours.
+
+Also fixed: `WmtScheduleParser.java` now consumes `stats_finalized` from the WMT schedule response as an additional "final" signal, independent of score presence.
+
 ### Step 3 — Box score backfill
 
 Any game that flipped to `final` in step 2 (or needs a re-fetch) goes into `BoxScoreBackfillJob`. That job runs `BoxscoreFetchService` which is the fallback waterfall:
@@ -86,7 +103,15 @@ Details: [pipelines/03-boxscore-pipeline.md](03-boxscore-pipeline.md).
 
 **No 7-day waiting period.** These are confirmed dead — the source page explicitly says cancelled or postponed. If the status later flips back to scheduled, the next 15-min sync recreates everything.
 
-Known tradeoff: rain delays that get marked "postponed" then "rescheduled" get deleted then re-created. Historical game_ids change. Acceptable per operator.
+Known tradeoff: rain delays that get marked "postponed" then "rescheduled" get deleted then re-created. Historical game_ids change (URL ids stay stable as `rb_<id>` but a fresh deletion + recreation means a fresh `id`). Acceptable per operator.
+
+**Ghost-game guards (shipped 2026-04-19, commit `ecb186b`):** three independent guards skip any Game that holds `ncaa_contest_id` so NCAA-attached rows cannot get orphan-swept:
+
+- `GamePipelineJob#clean_orphans` (this step) — skip Games with a non-null `ncaa_contest_id`.
+- Java `ScheduleComparisonEngine` — `DELETE_GHOST` action never fires on a Game with `ncaa_contest_id`.
+- Java `ReconciliationExecutor.executeDeleteGhost` — redundant check at execution time.
+
+The motivation: NCAA-tagged games are authoritative external records. If a transient schedule-page scrape misses them, we must not nuke the row.
 
 ---
 

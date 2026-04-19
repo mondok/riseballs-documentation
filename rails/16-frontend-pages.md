@@ -14,7 +14,7 @@ One section per page component under `app/javascript/pages/`. Each entry lists t
 - [Standings](#standings)
 - [RPI](#rpi)
 - [Stats](#stats)
-- [LiveView](#liveview)
+- [~~LiveView~~ (deleted 2026-04-19)](#liveview--deleted)
 - [PlayerSearch](#playersearch)
 - [PlayerDetail](#playerdetail)
 - [Analytics](#analytics)
@@ -50,7 +50,7 @@ One section per page component under `app/javascript/pages/`. Each entry lists t
 
 ## Scoreboard
 
-- **File:** `app/javascript/pages/Scoreboard.jsx` (457 LOC)
+- **File:** `app/javascript/pages/Scoreboard.jsx`
 - **Route:** `/scoreboard`
 - **URL params** (all synced via `useSearchParams`, defaults stripped from URL):
   - `div` — `"d1"` (default) or `"d2"`
@@ -61,22 +61,25 @@ One section per page component under `app/javascript/pages/`. Each entry lists t
   - `top25` — `1` = both teams ranked (D1 only, mutually exclusive with `ranked`)
   - `live` — `1` = live-only
 - **API calls:**
-  - `GET /api/scoreboard?division&date` (`scoreboard.index`) — the day's games.
+  - `GET /api/scoreboard?division&date` (`scoreboard.index`) — the day's games. Response includes `gameID` (stable `rb_<id>`), `ncaaContestId`, `gameNumber` per game.
   - `GET /api/scoreboard/predictions?division&date` (`scoreboard.predictions`) — parallel; populates a `predictions` map keyed by `gameID`.
-  - `GET /api/live_stats/batch?ids=` (`liveStats.batch`) — StatBroadcast event IDs.
-  - `POST /api/live_stats/sidearm_batch` (`liveStats.sidearmBatch`) — SidearmStats feeds.
+  - `GET https://live.riseballs.com/scoreboard?date=` — **cross-origin, not through the `api` axios client**. Called via `lib/liveOverlay.js` with a 4s `AbortController` timeout. Returns `{ date, events[], fetchedAt, source: "fresh"|"cache"|"stale" }`. Silent degradation on error.
 - **Polling:**
   - Scoreboard refreshes every 30s when viewing today.
-  - Live overlay refreshes every 10s (`LIVE_POLL_INTERVAL`).
+  - Live overlay refreshes on the same 30s cadence in parallel with the Rails fetch.
   - Both stop when navigating away from today.
-- **Live overlay logic:** `fetchLiveStats` splits candidates into three buckets by URL type:
-  1. StatBroadcast (extractable numeric ID via `extractSbId`)
-  2. Sidearm with explicit `liveStatsFeedUrls.home/away`
-  3. Sidearm where the `liveStatsUrl` itself matches `isSidearmUrl` (fed as `{ home: url }`)
-  Results merge into `liveOverlay` by `gameID`.
+- **Live overlay match ladder** (`lib/liveOverlay.js`, added mondok/riseballs#83):
+  1. Primary: key by `ncaaContestId`.
+  2. Fallback: `(homeSlug, awaySlug, gameNumber)` position pairing.
+  3. Reversed-slug rescue: if the overlay event has home/away flipped vs Rails, apply the overlay's scores with the swap.
+  4. Ambiguity guard: if multiple overlay events match one Rails game, skip the overlay for that game (don't guess).
+  5. Final protection: never override a Rails game whose `gameState === "final"`.
+  Overlay results merge into a `liveOverlay` map by Rails `gameID`.
 - **Sort order:** live -> upcoming -> completed; within a bucket, by `startTimeEpoch` (ascending for live/upcoming, descending for completed). Ranked games break ties.
 - **Key sub-components:** `<GameCard />` (receives `liveOverlay[game.gameID]` and `predictions[game.gameID]`).
 - **Notable:** filter chip row is conditionally rendered via `showFilters` and also marks "active filters" via a small amber dot on the Filters button. `setDivision` automatically clears `conf` to avoid orphan conference filters when switching divisions.
+
+**What changed 2026-04-19 (mondok/riseballs#83, #85, mondok/riseballs-live#1):** the StatBroadcast / SidearmStats overlay fetcher (the 10s `fetchLiveStats` poller using `liveStats.batch` and `liveStats.sidearmBatch`) was replaced with the single `riseballs-live` call. No more per-game URL probing; the overlay service does reconciliation on its side and returns a unified event list.
 
 ## TeamsIndex
 
@@ -113,22 +116,21 @@ One section per page component under `app/javascript/pages/`. Each entry lists t
 
 ## GameDetail
 
-- **File:** `app/javascript/pages/GameDetail.jsx` (1351 LOC — the largest page in the app)
+- **File:** `app/javascript/pages/GameDetail.jsx` (the largest page in the app)
 - **Route:** `/games/:id`
-- **URL params:** `:id` (internal Riseballs game id, used in API paths).
+- **URL params:** `:id` (internal Riseballs game id — historical NCAA contest ids still resolve via `Game.find_by_any_id`, but the canonical outbound form is `rb_<id>`).
 - **API calls:**
   - `GET /api/games/:id` (`games.show`) — NCAA contest header.
   - `GET /api/games/:id/boxscore` (`games.boxscore`) — prefetched alongside `show`.
   - `GET /api/games/:id/play_by_play` (`games.playByPlay`) — eager prefetch to decide whether to show the PBP tab. Final games get one retry after 20s on failure.
   - `GET /api/games/:id/prediction` (`games.prediction`) — returns 200 with a body for pregame, **204** for games that have been played, and errors (e.g. 503 from the predict service) map to the catch path. Panel silently hides in all non-200 cases.
-  - `GET /api/live_stats/batch?ids=` and `GET /api/live_stats/boxscore_batch?ids=` for StatBroadcast.
-  - `POST /api/live_stats/sidearm_batch` for SidearmStats.
-- **State:** `{ gameInfo, fetchError, tabData, activeTab, loading, tabLoading, liveData, predictionData }` plus refs (`boxscorePrefetching`, `liveIntervalRef`, `isFinalRef`).
+- **State:** `{ gameInfo, fetchError, tabData, activeTab, loading, tabLoading, predictionData }` plus refs (`boxscorePrefetching`, `isFinalRef`). No more `liveData` / `liveIntervalRef` — the StatBroadcast + SidearmStats poller was removed.
 - **Polling:**
   - `games.show` every 30s when the game isn't final.
-  - Live stats every 10s when not final and a feed URL exists.
   - Active tab refreshes silently every 30s during live games (no loading flash).
   - When `isLive`, boxscore + PBP both poll every 30s to keep the `<DiamondView />` accurate.
+
+**What changed 2026-04-19 (mondok/riseballs#85):** the 10s StatBroadcast + SidearmStats poller is gone. The `DiamondView` still updates because live boxscore + PBP poll on 30s cadence and `parseSituation` is computed from PBP. GameDetail does NOT consume the `riseballs-live` overlay — live scores on individual game pages come from the boxscore's linescore sum and the PBP tail, not the overlay. The overlay is a scoreboard-only concern.
 - **Tabs:**
   - **Box Score** (`<BoxScore />`) — always present.
   - **Play-by-Play** (`<PlayByPlay />`) — suppressed if `tabData.play_by_play._error` or has no `periods`. Also suppressed pre-fetch for final games (don't show the tab until we know there's data).
@@ -189,17 +191,11 @@ One section per page component under `app/javascript/pages/`. Each entry lists t
 - **State:** `{ division, type, category, stat, conference, warScope, warType, page, data, loading }`.
 - **Behaviour:** flipping `category` (batting/pitching) auto-picks the first stat in the corresponding list. WAR leaderboard is gated on `user?.can_view_war`.
 
-## LiveView
+## LiveView — **DELETED**
 
-- **File:** `app/javascript/pages/LiveView.jsx` (644 LOC)
-- **Route:** `/live` (auth-required).
-- **API calls:**
-  - `POST /api/live_stats/resolve` (`liveStats.resolve`) — resolve monitor URLs (`statmonitr.php?gid=`, `statbroadcast.php?gid=`) to numeric SB event IDs.
-  - `GET /api/scoreboard?division=d1&date=today` (`scoreboard.index`) — on mount, to refresh Sidearm feed URLs and to populate the "add game" picker.
-  - `GET /api/live_stats/batch` + `POST /api/live_stats/sidearm_batch` — every 10s (POLL_INTERVAL).
-- **State:** `{ savedGames, liveData, showPicker, availableGames, pickerLoading, layout, focusedIdx, polling }`
-- **Persistence:** `localStorage.riseballs_live_view` holds the list of watched games. Cleared across day boundaries by filtering on `g.date === todayStr()`.
-- **Layout toggle:** grid vs rows; focus mode (`focusedIdx`) maximises one tile.
+**File:** `app/javascript/pages/LiveView.jsx` — **removed** 2026-04-19 (mondok/riseballs#85 part 1). The `/live` route is gone from `App.jsx`, the "Live" nav entry is gone from `Layout.jsx`, and `localStorage.riseballs_live_view` is no longer written (old values linger in users' browsers but nothing reads them).
+
+Rationale: the StatBroadcast + SidearmStats feeds the page consumed are flaky and require per-game feed URL resolution. The replacement is the `riseballs-live` overlay on `/scoreboard`, which pulls reconciled NCAA + ESPN data in one call with server-side caching and slug resolution. Users that want a "watch multiple live games at once" view use the scoreboard filtered by `?live=1`.
 
 ## PlayerSearch
 

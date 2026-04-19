@@ -1,16 +1,24 @@
 # External Service Clients
 
-Rails-side thin clients for the two sibling services in the Riseballs
-stack:
+Rails-side thin clients for the sibling services Rails itself calls.
+Since 2026-04-19 there is a third sibling, `riseballs-live`, which
+**Rails does not call** — the browser talks to it directly. Rails has
+no HTTP client for it and should never grow one.
 
 - **Java scraper** (`riseballs-scraper`) — box score fetching, roster
   augmentation, schedule reconciliation, standings scraping, and the
   game creation gate.
 - **Python predict service** (`riseballs-predict`) — matchup prediction
   and keys-to-victory analysis.
+- **(out-of-band) `riseballs-live`** — consumed by the browser, not
+  Rails. See [live/00-overview.md](../live/00-overview.md).
 
-Both clients are pure HTTP — no shared models, no shared DB, just JSON
-over HTTP. All cross-service calls go through one of these two files.
+`StatBroadcast` and `SidearmStats` clients used to live here too; both
+were deleted on 2026-04-19 along with the LiveStats controller. See the
+deleted entries below.
+
+Both remaining clients are pure HTTP — no shared models, no shared DB,
+just JSON over HTTP.
 
 ## Table of Contents
 
@@ -127,7 +135,7 @@ Pulled from `grep 'JavaScraperClient\.'` across the codebase.
 | -------------------------------------------------------- | ------------------------------------------ |
 | `GamePipelineJob`                                        | `scrape_batch`                             |
 | `Game#before-create` (`app/models/game.rb:157`)          | `find_or_create_game` (gate)               |
-| `NcaaScheduleService` (`app/services/ncaa_schedule_service.rb:78`) | `find_or_create_game` (gate)    |
+| `NcaaGameDiscoveryJob`                                   | `find_or_create_game` (gate; inlined in the job now that Ruby `NcaaScheduleService` is deleted) |
 | `BoxScoreBackfillJob`                                    | `scrape_batch` (for missing box scores)    |
 | `RefetchMissingPbpJob`                                   | `scrape_batch` (PBP refetch path)          |
 | `ScheduleReconciliationJob`                              | `reconcile`                                |
@@ -271,3 +279,22 @@ The scoreboard explicitly **does not block the page** on predict
 failure: each game's prediction is fetched independently, and a 503
 from predict for one game shows a "-" placeholder rather than breaking
 the whole scoreboard.
+
+---
+
+## Deleted clients (2026-04-19)
+
+The following classes were removed in mondok/riseballs#85 part 1 and
+must not be reintroduced. If any live-score feature needs a new client
+wrapper, it belongs in `riseballs-live` (via the browser), not in
+Rails.
+
+| Removed | File | Reason |
+|---------|------|--------|
+| `StatBroadcastService` | `app/services/stat_broadcast_service.rb` | All StatBroadcast live-stats machinery retired; overlay data now via `riseballs-live`. |
+| `SidearmStatsService` | `app/services/sidearm_stats_service.rb` | Same. |
+| `GameIdentityService` | `app/services/game_identity_service.rb` | Coordinated `sb_event_id` discovery; column dropped. |
+| `EspnScoreboardService` | `app/services/espn_scoreboard_service.rb` | ESPN ingestion moved entirely to `riseballs-live` (Phase 8, mondok/riseballs#84). |
+
+No `RiseballsLiveClient` exists on the Rails side. Adding one would
+breach the "browser calls it directly" contract; don't propose it.

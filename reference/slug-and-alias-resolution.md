@@ -1,12 +1,19 @@
 # Slug and Alias Resolution
 
-Two independent implementations resolve "arbitrary team name string → our `teams.slug`". Side-by-side.
+Three independent implementations resolve "arbitrary team name string → our `teams.slug`". Side-by-side.
 
 ---
 
-## Why two implementations
+## Why three implementations
 
-Historical: the Rails `TeamMatcher` came first. When the scraper was extracted into Java, Java needed its own resolver for reconciliation and roster augmentation (it doesn't call Rails). Both share the same `team_aliases` table as the canonical alias store.
+Historical: the Rails `TeamMatcher` came first. When the Java scraper was extracted, Java needed its own resolver for reconciliation and roster augmentation (it doesn't call Rails). Both share the same `team_aliases` table as the canonical alias store.
+
+As of 2026-04-19 there is also a **third resolver** in `riseballs-live` (`client/SlugResolver.java`). Unlike the other two, this one has **no database access** — it loads two classpath resources at startup and does all resolution in memory:
+
+- `espn_slug_overrides.json` (163 entries) — copy of the Ruby `ESPN_SLUG_OVERRIDES` hash plus three reviewer-added entries (Florida Atlantic, Sam Houston, San Jose State accent handling). Maps ESPN team names/abbreviations to our canonical slugs.
+- `known_slugs.txt` (594 entries) — the universe of D1+D2 slugs. If a lookup falls through the override map, `SlugResolver` checks whether the lowercase-collapsed ESPN slug appears in this list.
+
+This is intentional prison-safe duplication: the live service has zero DB access so it cannot consult `team_aliases`. Any new ESPN slug override must be added to **both** `espn_slug_overrides.json` in `riseballs-live` and the Ruby `ESPN_SLUG_OVERRIDES` map in Rails (`app/services/espn_slug_overrides.rb` or wherever the Ruby copy lived historically — the Ruby `EspnScoreboardService` has itself been deleted, but the override map may still be referenced by tests or rake tasks for other purposes).
 
 ---
 
@@ -144,8 +151,9 @@ Aliases are matched case-insensitively via the unique index `(lower(alias_name),
 
 ## Related docs
 
-- [scraper/03-parsers.md](../scraper/03-parsers.md) — Java `OpponentResolver` with Mermaid decision tree
+- [scraper/03-parsers.md](../scraper/03-parsers.md) — Java scraper `OpponentResolver` with Mermaid decision tree
+- [live/02-architecture.md](../live/02-architecture.md) — `riseballs-live`'s classpath-resource `SlugResolver`
 - [rails/08-matching-services.md](../rails/08-matching-services.md) — Rails `TeamMatcher`
 - [rails/01-models.md](../rails/01-models.md) — `TeamAlias` model
 - [pipelines/04-standings-pipeline.md](../pipelines/04-standings-pipeline.md) — how ambiguous names resolve in standings
-- [operations/runbook.md](../operations/runbook.md) — "unresolved opponent" playbook
+- [operations/runbook.md](../operations/runbook.md) — "unresolved opponent" and "live overlay not updating" playbooks

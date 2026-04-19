@@ -4,13 +4,27 @@ The "nightly safety net." Three independent mechanisms keep the `games` table ho
 
 ---
 
-## Three reconciliation paths
+## Four reconciliation paths
 
 | Path | Who runs it | Cron | Source of truth |
 |------|-------------|------|-----------------|
+| NCAA contest-id enrichment | Rails `NcaaGameDiscoveryJob` (re-enabled 2026-04-19 per mondok/riseballs#82) | `*/20 * * * *` + nightly season sweep | NCAA GraphQL API (same persisted-query hash as Java scraper + `riseballs-live`) |
 | NCAA date reconciliation | Rails `NcaaDateReconciliationJob` → Java `/api/reconcile/ncaa-dates` | `30 2 * * *` (2:30 AM) | NCAA GraphQL API |
 | Schedule reconciliation | Rails `ScheduleReconciliationJob` → Java `/api/reconcile/schedule` | `0 3 * * *` (3 AM) | Each team's schedule page |
 | Game deduplication | Rails `GameDedupJob` | `*/15 * * * *` (every 15 min) | Full box score fingerprint |
+
+---
+
+## NCAA contest-id enrichment (`NcaaGameDiscoveryJob`)
+
+Silently broken from 2026-04-12 to 2026-04-19; re-enabled as part of the `riseballs-live` rollout (mondok/riseballs#82). During the outage, `games.ncaa_contest_id` coverage dropped to ~0% on new rows; the live-overlay reconciler in `riseballs-live` primarily matches on `ncaaContestId`, so the drop caused overlay matches to fall through to slug+gameNumber pairing everywhere — tolerable short-term but fragile for doubleheaders with incomplete slug resolution.
+
+- **Flow:** call NCAA GraphQL for today/yesterday (`mode: "today"`, the `*/20` cadence) or for the full season (`mode: "season"`, nightly). For each contest returned, upsert `ncaa_contest_id` and `start_time_epoch` on the matching Game via a 6-strategy matcher (direct contest id, date + sorted slugs, swapped orientation, resolved-slug map, partial one-side match, date+teams fallback ordered by `game_number`).
+- **Schedule:** `*/20 * * * *` + daily season sweep (in the 02:00 slot).
+- **Does not create games by default.** Contests that have no matching Game in our DB are logged and skipped. Game creation is still the Java scraper's responsibility via `GameCreationService` / `JavaScraperClient.find_or_create_game`.
+- After re-enable, contest-id coverage recovered to ~92% within a few hours.
+
+Historically this job lived inside the deleted Ruby `NcaaScoreboardService`; the job now calls the NCAA API directly using the same persisted-query hash as `riseballs-scraper` and `riseballs-live` to keep all three consumers aligned.
 
 ---
 

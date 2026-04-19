@@ -16,13 +16,13 @@ and print boxscores into the pipeline.
   - [`parse_decision` — W/L/S normalization](#parse_decision--wls-normalization)
   - [`upsert_player_stat` — abbreviation-aware merge](#upsert_player_stat--abbreviation-aware-merge)
   - [`distribute_team_batting_breakdowns` — team-level HR/2B/3B/SB/HBP fan-out](#distribute_team_batting_breakdowns--team-level-hr2b3bsbhbp-fan-out)
-  - [`enrich_with_sb_pitchers` — StatBroadcast pitcher overlay](#enrich_with_sb_pitchers--statbroadcast-pitcher-overlay)
+  - [~~`enrich_with_sb_pitchers`~~ — StatBroadcast pitcher overlay (DELETED 2026-04-19)](#enrich_with_sb_pitchers--statbroadcast-pitcher-overlay)
   - [`snapshot` — progression tracking](#snapshot--progression-tracking)
 - [PitcherEnrichmentService (`app/services/pitcher_enrichment_service.rb`)](#pitcherenrichmentservice)
 - [PlayerStatsCalculator (`app/services/player_stats_calculator.rb`)](#playerstatscalculator)
 - [WarCalculator (`app/services/war_calculator.rb`)](#warcalculator)
 - [RpiService (`app/services/rpi_service.rb`)](#rpiservice)
-- [StatBroadcastService (`app/services/stat_broadcast_service.rb`)](#statbroadcastservice)
+- [~~StatBroadcastService~~ — DELETED 2026-04-19](#statbroadcastservice)
 
 ---
 
@@ -30,14 +30,15 @@ and print boxscores into the pipeline.
 
 ```mermaid
 flowchart LR
-    A[CachedGame boxscore JSON<br/>NCAA / athletics / WMT / SB / AI] --> B[GameStatsExtractor.verify_team_assignment!]
+    A[CachedGame boxscore JSON<br/>NCAA / athletics / WMT / AI] --> B[GameStatsExtractor.verify_team_assignment!]
     B --> C[GameStatsExtractor.extract]
     C --> D[(PlayerGameStat rows)]
     D --> E[PlayerStatsCalculator<br/>totals, splits, game_log]
     D --> F[WarCalculator<br/>per-player WAR]
     G[Game rows] --> H[RpiService<br/>per-team RPI]
-    I[StatBroadcastService<br/>live fetch / print boxscore] -.-> A
 ```
+
+The former `StatBroadcastService` arrow into `CachedGame boxscore JSON` was removed 2026-04-19. That path (live SB fetch → NCAA-shaped hash → GameStatsExtractor) is gone; the overlay job moved to `riseballs-live` (transient, client-side) and no longer writes to `cached_games`.
 
 Everything downstream assumes `PlayerGameStat` rows are the source of
 truth. Any bug in `GameStatsExtractor` propagates to totals, splits, WAR,
@@ -279,12 +280,13 @@ response to the user.
 
 ### `enrich(game_id, seo_slugs)`
 
-Lines 25-51. The slow work. Try AI scraping first (`AiBoxScoreService.fetch_pitchers`
-— broader coverage), fall back to StatBroadcast via
-`GameShowService.find_live_stats` + `StatBroadcastService.fetch_pitchers`.
+Lines 25-51. The slow work. Tries AI scraping (`AiBoxScoreService.fetch_pitchers`
+— broader coverage) to fill in pitcher decisions / pitch counts.
 Store result to `CachedGame` under key `sb_pitchers` with
 `game_state: "final"`, and `try_lock!` the CachedGame to stop further
 re-scrapes.
+
+**2026-04-19:** the StatBroadcast fallback (`GameShowService.find_live_stats` + `StatBroadcastService.fetch_pitchers`) was removed from this path along with the rest of the StatBroadcast machinery. AI scraping is the only enrichment route now. The `sb_pitchers` cached blob key stays (historical data still flows through it).
 
 ### `merge_athletics_pitchers(ncaa_data, athl_boxscore)`
 
@@ -489,79 +491,10 @@ The graph is scoped by `division`, so OWP/OOWP never leak across D1 and D2.
 
 ---
 
-## StatBroadcastService
+## StatBroadcastService — **DELETED**
 
-**File:** `app/services/stat_broadcast_service.rb` (679 LOC)
-**Purpose:** All interop with stats.statbroadcast.com — live event
-fetches, print-boxscore parsing, pitcher boxscore parsing, and active
-event discovery for auto-linking.
+**File:** `app/services/stat_broadcast_service.rb` — **removed** 2026-04-19 (mondok/riseballs#85 part 1). The entire stats.statbroadcast.com interop surface (live event fetches, print-boxscore parsing, pitcher-row parsing, active-event discovery + auto-linking) is gone. So are its downstream integration points: `GameIdentityService`, `Api::LiveStatsController`, the SPA's `LiveView` page, and the Ruby `EspnScoreboardService` (in an adjacent phase).
 
-### Public surface
+Replacement: the `riseballs-live` service ([live/00-overview.md](../live/00-overview.md)) handles live-score ingestion via NCAA + ESPN feeds. It does NOT replace the historical StatBroadcast write-path into `cached_games` / `player_game_stats` — live-overlay data is transient and the browser consumes it directly.
 
-| Method                                                 | Purpose                                                                                             |
-| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
-| `extract_event_id(url)`                                | Pull numeric event id from `?id=12345` / `statb.us/b/12345` / `statb.us/v/CODE/12345` forms.        |
-| `fetch_live(event_id)`                                 | Return `{visitor_score, home_score, inning, outs, at_bat, pitcher, linescore, title, ...}`.        |
-| `fetch_live_batch(event_ids)`                          | Thread-fanout over up to 12 ids, `{id => result}`.                                                  |
-| `resolve_monitor_url(url)`                             | Resolve a team/monitor page URL to a `/broadcast/?id=N` URL, cached 10 min via `CachedApiResponse`. |
-| `fetch_print_boxscore(event_id)`                       | Fast path: plain-HTML print boxscore parsed into NCAA-shaped hash. Used for live/cached boxscores.  |
-| `fetch_print_boxscore_batch(event_ids)`                | Thread-fanout variant.                                                                              |
-| `fetch_pitchers(event_id)`                             | Parse the team-specific box HTML (`team=H` / `team=V`) → pitcher rows with `dec`, `ip`, ...        |
-| `discover_active_events`                               | Scrape statmonitr.php for currently-live softball games. Returns `[{event_id, team_a, team_b, is_live}]`. |
-| `link_discovered_events(date: Date.current)`           | Match discovered events to Game rows (team name + date) and `GameIdentityService.link_sb_id`.       |
-
-### Transport
-
-Primary fetch: `sb_get(path)` → decode ROT13 → base64 (lines 671-675).
-`fetch_stats_html` and `fetch_box_html` build `base64(encoded params)`
-URLs and POST to the webservice (lines 464-478, 589-604).
-
-Print endpoint (`PRINT_URL = "https://stats.statbroadcast.com/output/print.php"`,
-line 98) is unencoded HTML, significantly faster, and the preferred path
-for any batch/cached work (`fetch_print_boxscore` returns a NCAA-shaped
-hash with `teams`, `teamBoxscore`, `linescores`, `_source:
-"statbroadcast"`).
-
-### Print boxscore parsing
-
-Lines 228-404.
-
-- Table 0 is the linescore; rows 0/1 are visitor/home.
-- Subsequent tables are filtered by header signature:
-  - **Batting**: has `#player`/`player` + `ab` + `rbi`, with exactly one
-    `#player` column (excludes the side-by-side combined table, which
-    has two).
-  - **Pitching**: has `ip` + `er` + `k`, with exactly one non-stat
-    header (excludes combined).
-- `parse_print_batting` strips the leading jersey number, detects subs
-  by any parenthesized annotation (`(PH)`, `(PR)`, etc.) OR blank
-  position, and emits
-  `{firstName, lastName, position, starter, batterStats}`.
-- `parse_print_pitching` extracts decision from `(W)`/`(L)`/`(S)` in the
-  name, then fills `pitcherStats` including `inningsPitched`,
-  `hitsAllowed`, `earnedRuns`, `walksAllowed`, `strikeouts`.
-- `build_print_team_stats` rolls up `batterTotals` from the parsed
-  players for drop-in compatibility.
-
-### Pitcher-row parser
-
-Lines 609-657. Table lookup by header signature (`Dec` + `IP` +
-`Player`), column map:
-
-```
-# | Player | Dec | IP | H | R | ER | BB | K | WP | BK | HP | BF | 2B | 3B | HR | XBH | FO | GO | GDP | TP | ST
-```
-
-Normalizes `"Last, First"` → `"First Last"` (line 624-630). Returns an
-array of per-pitcher hashes used by `PitcherEnrichmentService.enrich` →
-`GameStatsExtractor.enrich_with_sb_pitchers` to write authoritative
-pitch counts and decisions.
-
-### Live event discovery & auto-link
-
-Lines 145-205. Scrapes statmonitr.php, filters by softball/WSB context
-in surrounding 2000 chars, extracts team names from the nearby
-`"TeamA vs. TeamB"` string. `link_discovered_events` matches each
-discovered event to an undated Game (`sb_event_id: nil`) for the current
-date, then calls `GameIdentityService.link_sb_id`. Returns the count of
-newly-linked games. Swallows all StandardErrors with a warn log.
+The `enrich_with_sb_pitchers` method on `GameStatsExtractor` is retained as a code path but its only input used to come from `StatBroadcastService.fetch_pitchers`; that feed is gone. In practice the path is now dead code inside a still-present method signature. AI-based pitcher enrichment (`AiBoxScoreService.fetch_pitchers`) continues to backfill decisions and pitch counts when present.
