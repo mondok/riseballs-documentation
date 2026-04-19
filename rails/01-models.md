@@ -145,6 +145,7 @@ No `belongs_to :team` — both teams are referenced by slug strings (`home_team_
 - `url_id` — **stable public id** for this game. Always returns `"rb_<id>"`. Decoupled from `ncaa_contest_id` as of mondok/riseballs commit `263a684` (2026-04-19). Use this in any outbound URL / scoreboard payload. `Api::ScoreboardController` sets `gameID: game.url_id` and `ncaaContestId: game.ncaa_contest_id` as separate fields so the live-overlay reconciler can key off the NCAA id without our URL scheme being tied to NCAA.
 - `box_score_id_for(team_slug)` / `set_box_score_id(team_slug, id)` — routes to `home_box_score_id` or `away_box_score_id`.
 - `preferred_box_score` — delegates to `CachedGame.fetch_team_boxscore` (home first, then away).
+- `has_doubleheader_sibling?` — true when another Game exists for the same `(game_date, home_team_slug, away_team_slug)` on a different `game_number`. Added in issue #87 (2026-04-19). Used by `GamePipelineJob#fetch_missing_boxscores`, `BoxScoreBackfillJob`, and `Api::GamesController#probably_finished?` to skip null-scored halves of doubleheaders — the Java scraper's pre-scraper#11 score-match DH disambiguation could return the wrong half's boxscore when `Game.home_score` was null. With scraper#11's direct-id lookup this guard is belt-and-suspenders: blocks the risky scrape from being kicked off in the first place.
 
 ### Cross-references
 

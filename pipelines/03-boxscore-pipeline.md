@@ -53,7 +53,7 @@ All live in `app/services/`. See [rails/06-ingestion-services.md](../rails/06-in
 
 | Step | Private method | Service called | Notes |
 |------|---------------|----------------|-------|
-| 1 | `try_wmt` | `WmtBoxScoreService` | WMT JSON API. `WMT_DOMAINS` + `SCHOOL_IDS` constants for dispatch. Doubleheader disambiguation by score match. |
+| 1 | `try_wmt` | `WmtBoxScoreService` | WMT JSON API. `WMT_DOMAINS` + `SCHOOL_IDS` constants for dispatch. See [scraper/02-services.md](../scraper/02-services.md) `WmtFetcher` for the Java counterpart — which now disambiguates doubleheaders via the captured `wmt://<id>` URL from `game_team_links` (scraper#11), not by score-matching candidates. |
 | 2 | `try_local_scraper` | `AthleticsBoxScoreService.sidearm_fetch_html` + `AthleticsBoxScoreService.parse` | Plain HTTP fetch, then HTML parse. Fastest for non-JS pages. |
 | 3 | `try_playwright_html` | `CloudflareBoxScoreService` (HTML fetch only) → `AthleticsBoxScoreService.parse` | Playwright worker. Browser-rendered HTML for JS-heavy pages. **Legacy / preferred path is Java scraper.** |
 | 4 | `try_html_scraper` | `AthleticsBoxScoreService.sidearm_fetch_html` + `.parse` | Same as step 2 but iterates differently — covers a different link set. |
@@ -124,7 +124,8 @@ See [rails/13-rake-tasks.md](../rails/13-rake-tasks.md).
 - **Locked games:** if `game.locked == true`, fast-path: skip the fetch, return the DB-recorded score summary without calling external sources.
 - **Pre-game 404 guard:** if game is `scheduled` and has no scores, return 404 (no box score exists yet).
 - **Box score discovery gate:** if `state == scheduled` and the fetched box score has runs > 0 on R linescore, reject (likely prior meeting in the series). See issue #65 context in [pipelines/02-pbp-pipeline.md](02-pbp-pipeline.md#the-box-score-discovery-bug-issue-65-fixed-april-18-2026).
-- **On-demand Java scrape (issue #87, April 19, 2026):** if all existing fallbacks fail AND the game is "probably finished" (final, or start_time_epoch >1h ago), the controller calls `JavaScraperClient.scrape_game(game_id)` synchronously and retries `BoxscoreFetchService.best_from_db`. Rate-limited via `Rails.cache.write("bs_ondemand:<game_id>", true, expires_in: 2.minutes)`. This self-heals the stuck-scheduled-game case on user request without waiting for the 15-minute cron tick.
+- **On-demand Java scrape (issue #87, April 19, 2026):** if all existing fallbacks fail AND the game is "probably finished" per `probably_finished?` (final, OR `start_time_epoch > 1.hour.ago` AND not a null-scored doubleheader half), the controller calls `JavaScraperClient.scrape_game(game_id)` synchronously and retries `BoxscoreFetchService.best_from_db`. Rate-limited via `Rails.cache.write("bs_ondemand:<game_id>", true, expires_in: 2.minutes)`. This self-heals the stuck-scheduled-game case on user request without waiting for the 15-minute cron tick.
+- **Doubleheader guard on `probably_finished?`:** a Game where `home_score.nil? && Game#has_doubleheader_sibling?` is never classified as "probably finished", even past the 1-hour mark. The downstream Java scrape's pre-scraper#11 candidate-picker would have pulled the sibling's boxscore for this game when scores aren't available to disambiguate. With scraper#11 (direct-id lookup via `wmt://<id>`) this is belt-and-suspenders — both layers guard the same failure mode.
 
 ## Cron-tick scrape filter (write path)
 
@@ -141,6 +142,8 @@ Both (as of issue #87) filter eligible games by:
 ```
 
 The widened predicate catches "stuck-scheduled" Games whose state has not flipped to final yet. Soft ceiling: scraper's own quality gates (`good_boxscore?`, `scores_match?`) reject bad data if the game really has not started.
+
+Additional doubleheader guard: both jobs append `.reject { |g| g.home_score.nil? && g.has_doubleheader_sibling? }`. A null-scored half of a doubleheader is never sent into the scrape pipeline — `Game#has_doubleheader_sibling?` looks up a same-date-same-teams row on a different `game_number`. Paired with scraper#11's direct-id lookup in `WmtFetcher`, this prevents the historical failure mode where game 1's scrape silently pulled game 2's boxscore.
 
 ---
 

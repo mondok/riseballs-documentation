@@ -73,6 +73,8 @@ After `match_all` and before box score backfill, `reconcile_stuck_states` flips 
 
 Forward-only: never demotes `final` / `postponed` / `cancelled`. Uses `update!` so the `after_update_commit` callback fires and `PbpOnFinalJob` gets enqueued.
 
+**Doubleheader guard** (companion to scraper#11): for Games where a same-date-same-teams sibling exists (`GamePipelineJob#doubleheader?`), signals 1 and 3 are suppressed when `Game.home_score` is blank. A cached boxscore could belong to the OTHER half of the doubleheader (race condition at cache-write time), and `scores_match?` returns true when the Game has null scores — so the boxscore check alone can't distinguish halves. The time heuristic is also unsafe for DHs because game 1 can look "stale" while game 2 is still finishing. Signal 2 (PBP completeness) is left unguarded — 40+ real plays is a direct observation of an actual game, and the downstream scrape has its own DH fix via scraper#11.
+
 Why it exists: WMT-platform teams (auburn, vt, etc.) derive `TeamGame.state` from score-presence in the WMT schedule feed, which lags the actual game end by 60-120+ min. Without this step `fetch_missing_boxscores` would skip recently-ended games and users would see "No box score data available" for hours.
 
 Also fixed: `WmtScheduleParser.java` now consumes `stats_finalized` from the WMT schedule response as an additional "final" signal, independent of score presence.

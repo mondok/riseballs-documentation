@@ -79,20 +79,21 @@ Many jobs delegate to the Java scraper over HTTP (`JavaScraperClient.*`). That h
 
 ### `GamePipelineJob`
 
-**File:** `app/jobs/game_pipeline_job.rb` (150 lines)
+**File:** `app/jobs/game_pipeline_job.rb`
 **Queue:** `default`
 **Schedule:** `*/15 * * * *` (every 15 minutes)
 **Lock:** `lock_singleton ttl: 1800`
 **Trigger:** sidekiq-cron. Not enqueued from anywhere else.
 **Inputs:** none
 
-The main pipeline driver. Orchestrates sync, match, backfill, cleanup for every 15-minute cycle:
+The main pipeline driver. Orchestrates sync, match, reconcile, backfill, cleanup for every 15-minute cycle:
 
 1. **Sync team schedules via Java scraper.**
    - Between 03:00 and 03:15 local time: full sync (POST `/api/team-schedule/sync-all`, 15-minute timeout). This is the once-per-day full re-scrape of all ~592 teams.
    - Every other run: only syncs teams that have unfinished games *today* (POST `/api/team-schedule/sync-team` with `teamSlug`, 30s per team). Pulls `TeamGame` rows from `team_games` filtered by `game_date: Date.current, state != "final"`.
 2. **Match team_games into Games.** Calls `TeamGameMatcher.match_scheduled` first (creates shells for scheduled games) and then `TeamGameMatcher.match_all` (updates shells with scores, pairs finals, creates Game rows for unmatched finals).
-3. **Fetch missing box scores.** Any final Game from today or yesterday without a good `athl_boxscore` cached is fed to `JavaScraperClient.scrape_batch`.
+2.5. **Reconcile stuck states (issue #86, 2026-04-19).** `reconcile_stuck_states` flips scheduled/live → final for today/yesterday Games when any of: (a) cached `athl_boxscore` is good AND scores match; (b) cached `athl_play_by_play` is complete; (c) `start_time_epoch < 4.hours.ago`. Forward-only; uses `update!` so `after_update_commit` enqueues `PbpOnFinalJob`. DH guard suppresses signals (a) and (c) for doubleheader halves with null scores — see [pipelines/01-game-pipeline.md](../pipelines/01-game-pipeline.md) Step 2.5.
+3. **Fetch missing box scores.** `fetch_missing_boxscores` picks up any final Game (or stuck-scheduled Game whose `start_time_epoch < 4.hours.ago`, per issue #87) from today or yesterday without a good `athl_boxscore` cached, and hands them to `JavaScraperClient.scrape_batch`. Additional `.reject { |g| g.home_score.nil? && g.has_doubleheader_sibling? }` skips null-scored DH halves (belt-and-suspenders pairing with scraper#11).
 4. **Clean orphans.**
    - **Pass 0 (immediate, no 7-day delay):** deletes all `team_games` with `state IN ('cancelled', 'postponed')`, plus any Game shell that had *only* those team_games attached. Also deletes `GameTeamLink` rows for those shells.
    - Pass 1: deletes `team_games` with `state = 'scheduled'` whose `game_date < 7.days.ago` (nulls `game_id` first).
@@ -115,7 +116,7 @@ The main pipeline driver. Orchestrates sync, match, backfill, cleanup for every 
 
 Three-phase safety net:
 
-1. **Gap fill.** Scan `Game.where(state: 'final', game_date: 60.days.ago..)` with both team slugs set, ordered newest-first, reject any that already have a good `athl_boxscore`. Batch the rest to the Java scraper. Ruby-side fallback capped at `RUBY_SCRAPE_LIMIT = 200` (`BoxscoreFetchService.fetch`).
+1. **Gap fill.** Scans Games in the last 60 days matching `state = 'final' OR (state = 'scheduled' AND start_time_epoch < 4.hours.ago)` (widened by issue #87) with both team slugs set, ordered newest-first, rejects any that already have a good `athl_boxscore`. Further rejects null-scored doubleheader halves via `.reject { |g| g.home_score.nil? && g.has_doubleheader_sibling? }` (issue #87's DH guard). Batches the rest to the Java scraper. Ruby-side fallback capped at `RUBY_SCRAPE_LIMIT = 200` (`BoxscoreFetchService.fetch`).
 2. **PGS name normalization.** For every team with players, load roster data, walk `PlayerGameStat` rows, match each to a roster entry via `PlayerNameMatcher`. When a collision exists between two PGS rows (same `ncaa_game_id`/`team_seo_slug`/`player_name`), keep the one with more batting+pitching activity and destroy the other.
 3. **Reaggregate Player totals.** For every team with both players and existing PGS rows, call `RosterService.aggregate_player_stats_from_game_stats(team)`.
 

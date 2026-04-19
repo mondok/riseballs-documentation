@@ -9,6 +9,7 @@ Common tasks, in priority order. Each one says **symptom → diagnosis → fix �
 | Symptom | Playbook |
 |---------|----------|
 | PBP missing for a game | [#pbp-missing-for-a-game](#pbp-missing-for-a-game) |
+| Box score missing for a finished game | [#box-score-missing-for-a-finished-game](#box-score-missing-for-a-finished-game) |
 | Wrong box score shown | [#wrong-box-score-shown](#wrong-box-score-shown) |
 | Score wrong on a game | [#score-wrong-on-a-game](#score-wrong-on-a-game) |
 | Game appears duplicated | [#game-appears-duplicated](#game-appears-duplicated) |
@@ -69,6 +70,47 @@ curl https://riseballs.com/api/games/<id>/play_by_play | jq '.periods | length'
 ```
 
 **See:** [pipelines/02-pbp-pipeline.md](../pipelines/02-pbp-pipeline.md).
+
+---
+
+## Box score missing for a finished game
+
+**Symptom:** `/games/:id` shows "No box score data available" for a game that has clearly ended. Typical complaint 10-90 minutes after final pitch.
+
+**Diagnose** (inside a prod rails console):
+
+```ruby
+g = Game.find(<id>)
+puts "state=#{g.state} score=#{g.home_score}-#{g.away_score} start=#{g.start_time_epoch && Time.at(g.start_time_epoch)}"
+puts "DH sibling?=#{g.has_doubleheader_sibling?}"
+CachedGame.where(game_id: g.id).each { |c| puts "  #{c.data_type} state=#{c.game_state.inspect} updated=#{c.updated_at}" }
+g.game_team_links.each { |l| puts "  link #{l.team_slug}: #{l.box_score_url.inspect}" }
+```
+
+**Three likely causes + fixes:**
+
+1. **Source hadn't published yet.** The athletics site (Sidearm) or WMT schedule feed lagged the actual game end. `Game.state = scheduled` despite the real game being over. As of issues #86/#87 (2026-04-19), `GamePipelineJob` both flips these to `final` via `reconcile_stuck_states` (time heuristic: start >4h ago) and widens `fetch_missing_boxscores` to scrape them even before the state flip. **User refresh of the game page** also triggers on-demand scrape via the controller (dedup-keyed 2 min per game). Expected self-healing window: next 15-min cron tick.
+
+2. **WMT direct-id fetch failing.** WmtFetcher uses `wmt://<id>` from `game_team_links` (scraper#11). If WMT's `api.wmt.games` returned a mangled response → Jackson parse error → scrape fails. Historical cause: HTTP/2 + istio-envoy frame corruption on large responses. Fixed by scraper#14 (HTTP/1.1 forced). Check scraper logs for `CTRL-CHAR, code 31` / `Illegal character` warnings.
+
+   ```sh
+   ssh dokku@ssh.mondokhealth.com logs riseballs-scraper --num 500 | grep -E "CTRL-CHAR|Illegal character|game \[id=<id>"
+   ```
+
+3. **Doubleheader guard actively skipping the scrape.** `Game#has_doubleheader_sibling?` is true and `home_score.nil?`. By design — we refuse to scrape one half of a DH while scores are null because the legacy path could return the other half's boxscore. Fix: let the schedule sync (or NCAA score reconciliation) populate real scores first, then the next cron tick scrapes it. If stuck for hours, check whether the WMT/Sidearm feed is actually reporting final.
+
+**Force a scrape** (skipping the DH guard — use judiciously):
+
+```sh
+ssh dokku@ssh.mondokhealth.com enter riseballs web 'bin/rails runner "
+Rails.cache.delete(\"bs_ondemand:<id>\")
+JavaScraperClient.scrape_game(<id>)
+"'
+```
+
+**Verify:** `curl https://riseballs.com/api/games/rb_<id>/boxscore` returns HTTP 200 with populated `teamBoxscore`.
+
+**See:** [pipelines/01-game-pipeline.md](../pipelines/01-game-pipeline.md) Step 2.5; [pipelines/03-boxscore-pipeline.md](../pipelines/03-boxscore-pipeline.md) on-demand scrape + DH guard.
 
 ---
 

@@ -107,12 +107,17 @@ String name();
 ```
 
 ### `WmtFetcher` — Learfield/WMT JSON API
-**File:** `service/fetcher/WmtFetcher.java` (375 LOC)
+**File:** `service/fetcher/WmtFetcher.java`
 **Timeout:** 30s.
-**Activation:** Only if home or away team's `athleticsUrl` host matches `WMT_DOMAINS` (hardcoded set of ~46 domains) or the team's `wmtSchoolId` is populated. `SCHOOL_IDS` map (lines 48-71) provides fallback domain→schoolId lookup.
-**Endpoint pattern:** `https://api.wmt.games/api/statistics/games/{gameId}?with[]=players&with[]=plays` (plus season schedule endpoint for reconciliation).
-**Headers:** Origin/Referer spoof to `wmt.games`, fake UA.
+**Activation:** Two paths, in order:
+
+1. **Direct-id fast path (scraper#11, shipped 2026-04-19).** `extractWmtGameIdFromLinks(game)` reads `game_team_links.box_score_url` for a `wmt://<id>` entry and, if present, calls `fetchGameDetail(id)` directly. This is the **doubleheader-safe path** — the WMT game ID was captured at schedule-sync time (see `WmtScheduleParser`) and uniquely identifies each half of a DH. If the direct call returns empty or throws, falls through to the legacy path. A short log line marks the fallback.
+2. **Legacy schedule-lookup path.** Activated only when no `wmt://` URL is available (first-time scrapes on brand-new schedules) or the direct call failed. Gated by `isWmtTeam(team)` — home or away team's `athleticsUrl` host matches `WMT_DOMAINS` (hardcoded set of ~46 domains) or the team's `wmtSchoolId` is populated. `SCHOOL_IDS` map provides the fallback domain→schoolId lookup. Fetches the season schedule, filters candidates by date, disambiguates doubleheaders by `scoresMatch(candidate, game)` — this step is where the pre-scraper#11 DH bug lived: with `Game.home_score == null`, it fell through to `candidates.get(0)`, which could be either half.
+
+**Endpoint pattern:** `https://api.wmt.games/api/statistics/games/{gameId}?with[0]=actions&with[1]=players&with[2]=plays&with[3]=drives&with[4]=penalties` (direct-id) plus `https://api.wmt.games/api/statistics/games?school_id=X&season_academic_year=Y&sport_code=WSB&per_page=200` (legacy schedule).
+**Headers:** Origin/Referer spoof to `wmt.games`, fake UA, `Accept-Encoding: identity`.
 **Output:** `BoxscoreData(boxscore, pbp)` via `WmtResponseParser`.
+**Dependency:** uses the shared `HttpClient` bean from `HttpClientConfig` — see [07-config-and-deployment.md](07-config-and-deployment.md). That bean is forced to HTTP/1.1 (scraper#14, shipped 2026-04-19) because HTTP/2 + istio-envoy was corrupting large WMT response bodies, surfacing as Jackson `CTRL-CHAR code 31` parse errors. WmtFetcher would fail silently and drop to `LocalScraper` → `Playwright` → `PlainHttp`, all of which no-op on `wmt://` URLs, giving the user a 503.
 
 ### `LocalScraperFetcher` — headless browser service
 **File:** `service/fetcher/LocalScraperFetcher.java` (143 LOC)
