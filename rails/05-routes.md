@@ -1,6 +1,14 @@
 # Rails Routes Reference
 
-Complete route table, as defined in `config/routes.rb` (97 lines total). Routes below are grouped by namespace; ordering within a group matches `routes.rb` order.
+Complete route table, as defined in `config/routes.rb`. Routes below are grouped by namespace; ordering within a group matches `routes.rb` order.
+
+**Deleted 2026-04-19 (mondok/riseballs#85):** the four `/api/live_stats/*` routes and the `/live` SPA catch-all entry — StatBroadcast / SidearmStats live-stats machinery was removed in favor of the `riseballs-live` overlay at `live.riseballs.com`. The ex-routes were:
+
+- `GET /api/live_stats/batch`
+- `GET /api/live_stats/boxscore_batch`
+- `POST /api/live_stats/sidearm_batch`
+- `POST /api/live_stats/resolve`
+- The `/live` nav entry (still caught by the SPA `/*path` glob since `/live` isn't in the exclusion list, but the React component behind it was deleted — navigating there now renders the default 404-ish "nothing" SPA state).
 
 Source of truth: `/Users/mattmondok/Code/riseballs-parent/riseballs/config/routes.rb`.
 
@@ -136,10 +144,6 @@ Route block: `routes.rb:64-70`. Param key is `:slug` (controller accepts bare nu
 | GET  | `/api/dashboard` | `api/dashboard#index` |
 | GET  | `/api/scoreboard` | `api/scoreboard#index` |
 | GET  | `/api/scoreboard/predictions` | `api/predictions#scoreboard` |
-| GET  | `/api/live_stats/batch` | `api/live_stats#batch` |
-| GET  | `/api/live_stats/boxscore_batch` | `api/live_stats#boxscore_batch` |
-| POST | `/api/live_stats/sidearm_batch` | `api/live_stats#sidearm_batch` |
-| POST | `/api/live_stats/resolve` | `api/live_stats#resolve` |
 | GET  | `/api/rankings` | `api/rankings#index` |
 | GET  | `/api/stats` | `api/stats#index` |
 | GET  | `/api/rpi` | `api/rpi#index` |

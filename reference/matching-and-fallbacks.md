@@ -259,21 +259,54 @@ See [pipelines/06-reconciliation-pipeline.md](../pipelines/06-reconciliation-pip
 
 ---
 
+## Live-score overlay match ladder (browser, `lib/liveOverlay.js`)
+
+Added 2026-04-19 (mondok/riseballs#83). The browser fetches the Rails scoreboard and the `riseballs-live` overlay in parallel, then merges them client-side.
+
+```
+For each Rails scoreboard game G (with .gameID, .ncaaContestId, .gameNumber,
+                                     home.names.seo, away.names.seo, .gameState):
+
+1. Primary match: find overlay event E where E.ncaaContestId == G.ncaaContestId.
+     → If found, apply overlay scores/state. Done.
+
+2. Fallback match: find E where (E.homeSlug, E.awaySlug, E.gameNumber)
+                               == (G.home.names.seo, G.away.names.seo, G.gameNumber).
+     → If found, apply. Done.
+
+3. Reversed-slug rescue: find E where (E.homeSlug, E.awaySlug) is the reversed
+    pair vs G AND (E.gameNumber == G.gameNumber). Apply overlay's scores with
+    home/away SWAPPED (Rails is authoritative on orientation).
+
+4. Ambiguity guard: if steps 2 or 3 produce multiple candidate overlays for
+    a single Rails game, skip the overlay (don't guess). Rails data renders.
+
+5. Final protection: if G.gameState == "final", NEVER apply the overlay.
+    Rails is authoritative on finals.
+```
+
+**Where the reconciliation happens twice:** step 1 relies on the overlay service having already run its own reconciliation between NCAA and ESPN (via `ScoreboardReconciler` inside `riseballs-live` — matches on `ncaaContestId` primary, `(homeSlug, awaySlug, startTimeEpoch within 30 min)` fallback, reversed-slug rescue with score swap, ambiguity skip, state-escalation rule `max(ncaa.state, espn.state)` over `scheduled < live < final`). The browser merge is a second reconciliation layer on top of that: overlay-vs-Rails rather than NCAA-vs-ESPN.
+
+**Why all this machinery:** NCAA's `contestId` can lag publish (the re-enabled `NcaaGameDiscoveryJob` is closing that gap but doubleheaders in particular can have null contest ids for hours). Slug-based pairing covers the gap. Reversed-slug rescue handles home/away flips between sources. Ambiguity guard handles cases where two games of the same doubleheader can't be told apart from the overlay. Final protection handles the case where the overlay has stale data about a just-concluded game.
+
+See `app/javascript/lib/liveOverlay.js` (Rails client) and `reconciler/ScoreboardReconciler.java` (overlay service).
+
+---
+
 ## Schedule source fallback (Rails)
 
 Rarely used — the Java scraper is primary — but Rails has its own chain for emergency use:
 
 ```
-NcaaScheduleService  (NCAA GraphQL — 6-strategy matcher + contest-ID dedup)
-    ↓
-NcaaScoreboardService  (with verify_contest_assignment for DH)
+NcaaGameDiscoveryJob  (calls NCAA GraphQL directly; used to delegate to
+                       NcaaScoreboardService, which was deleted 2026-04-19)
     ↓
 ScheduleService / CloudflareScheduleService  (LEGACY)
     ↓
 AiScheduleService  (LLM — last resort, has a scoped-variable bug at line 104)
 ```
 
-> `EspnScoreboardService` used to sit between `NcaaScoreboardService` and the legacy schedule services as an additional live-score update source, but as of 2026-04-19 it has **zero production callers** (tests-only). See [rails/06-ingestion-services.md](../rails/06-ingestion-services.md#espnscoreboardservice--dead-code-tests-only).
+> Both Ruby `NcaaScheduleService` and Ruby `NcaaScoreboardService` were deleted in Phase 0 of the riseballs-live rollout (commit `42b585a`, 2026-04-19). NCAA live-score data is now served by `riseballs-live`'s `NcaaScoreboardClient` (consumed by the browser). NCAA contest-id backfill on the Rails side runs through the re-enabled `NcaaGameDiscoveryJob`. Ruby `EspnScoreboardService` was deleted in Phase 8 of the same rollout (mondok/riseballs#84); ESPN data lives exclusively in `riseballs-live` now.
 
 **Where:** `app/services/*_schedule_service.rb`.
 See [rails/06-ingestion-services.md](../rails/06-ingestion-services.md).
@@ -305,10 +338,14 @@ See [pipelines/07-prediction-pipeline.md](../pipelines/07-prediction-pipeline.md
 | Box score | WMT API | local scraper HTML | Playwright HTML → plain HTTP → rediscovery | AI LLM extraction |
 | PBP (live) | cached_games | Athletics | WMT | negative cache 503 |
 | PBP (proactive) | `PbpOnFinalJob` w/ polynomial retry | — | — | operator rake task |
-| Schedule | Java `TeamScheduleSyncService` | `ScheduleReconciliationJob` (daily) | `StuckScheduleRecoveryJob` (hourly) | `NcaaScheduleService` / `NcaaScoreboardService` Rails fallback (ESPN service is dead code, tests-only) |
-| Team name → slug (Java) | `TeamAlias` | exact slug | name/longName | suffix strip + state abbr |
+| Schedule | Java `TeamScheduleSyncService` | `ScheduleReconciliationJob` (daily) | `StuckScheduleRecoveryJob` (hourly) | — (Ruby `NcaaScheduleService` + `NcaaScoreboardService` + `EspnScoreboardService` all deleted 2026-04-19) |
+| NCAA contest-id backfill | Java `NcaaApiClient` during reconciliation | Rails `NcaaGameDiscoveryJob` (`*/20` + nightly sweep, re-enabled 2026-04-19) | — | — |
+| Live score overlay | `riseballs-live` (NCAA + ESPN reconciled in-process, Caffeine-cached) | fresh 30s → stale 5m → negative 10s inside the overlay | browser fall-through to Rails-only data | — |
+| Team name → slug (Java scraper) | `TeamAlias` | exact slug | name/longName | suffix strip + state abbr |
 | Team name → slug (Rails) | `TeamAlias` | exact slug | case-insensitive name | fuzzy match |
+| Team name → slug (`riseballs-live`) | `espn_slug_overrides.json` (163 entries, classpath) | `known_slugs.txt` (594 entries, classpath) | lowercase-collapse of raw ESPN slug | fail |
 | Opponent game match | unclaimed + game_number | unclaimed any | claimed + game_number | claimed first |
+| Live-overlay game match | `ncaaContestId` | `(homeSlug, awaySlug, gameNumber)` | reversed-slug rescue with score swap | ambiguity skip / final protection |
 | Roster augment | WMT API | WordPress | Sidearm bio pages | — |
 | Standings | Java `StandingsOrchestrator` daily | — | — | manual scrape via admin UI |
 | Prediction | live Predict call | — | — | 503 → hide panel |

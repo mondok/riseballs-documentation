@@ -38,6 +38,7 @@ Reusable React components under `app/javascript/components/`. Most pages are thi
 - **Role:** Top-level shell for every route. Renders the sticky header, nav, theme toggle, mobile menu, and `<Outlet />`.
 - **Nav configuration:** `NAV_ITEMS` array at module scope. Each entry: `{ path, label, icon, authRequired?, adminOnly? }`.
 - **Admin filter:** `adminOnly` items only render when `user?.email === ADMIN_EMAIL` (hardcoded string `"matt.mondok@gmail.com"`). Currently only the RPI link uses this — call out if adding more.
+- **Removed 2026-04-19:** the "Live" nav entry (`{ path: "/live", label: "Live", authRequired: true }`) was deleted with `LiveView.jsx`.
 - **Theme:** `dark` is persisted to `localStorage.theme` and toggles the `dark` class on `<html>`. Tailwind 4's `darkMode` is implicitly class-based through this toggle.
 - **Mobile menu:** auto-closes on route change via an effect on `location.pathname`.
 - **Layout container:** main content is capped at `max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6`.
@@ -64,22 +65,22 @@ Reusable React components under `app/javascript/components/`. Most pages are thi
 
 ### GameCard
 
-- **File:** `app/javascript/components/GameCard.jsx` (275 LOC)
+- **File:** `app/javascript/components/GameCard.jsx`
 - **Used by:** `Scoreboard`, `Dashboard` (today's games block).
 - **Props:** `game`, `fromLabel?`, `liveOverlay?`, `prediction?`.
-- **Role:** Clickable tile that links to `/games/:internalId`. Renders:
+- **Role:** Clickable tile that links to `/games/:internalId` (`rb_<id>` — see `Game#url_id`). Renders:
   - State badge (`LIVE` pulsing with red accent, `Final`, `In Progress`, `Upcoming`).
-  - `Live Stats` external link (opens in new tab) and a "Live View" button that stuffs the game into `localStorage.riseballs_live_view` and routes to `/live`.
   - Two team rows with logo, optional rank (`#N`), name, and score.
   - Optional `Gm N` doubleheader badge and `Delayed` freshness badge.
   - Prediction bar (`<PredictionBar />`) — only rendered when the game is pre-game and a `prediction` prop is supplied (keys: `home_pct`, `away_pct`).
-- **Live overlay rules:** The component re-implements the same score/state logic as GameDetail's header:
-  - `hasLive` — `liveOverlay.has_started` or `home_score != null`.
-  - `liveCompleted` — SB says completed, or NCAA says final, or scores exist with no active inning.
+- **Live overlay rules:** The component consumes `liveOverlay` entries supplied by the parent `Scoreboard` page (which merged them via `lib/liveOverlay.js`). Logic is simpler than the pre-2026-04-19 version — the overlay already resolves state/scores:
+  - `hasLive` — overlay says game is live, or Rails scores are populated.
+  - `liveCompleted` — overlay says completed, or Rails says final.
   - `isLive` — `hasLive && !liveCompleted`.
-  - Winner highlight falls back to `live` scores when `liveCompleted`.
 - **Fallback:** `scoreFromLinescores(linescores, isHome)` sums per-inning NCAA linescores when no other score is available. Returns `null` if nothing to sum.
 - **Score unavailable:** If the game is final but no score from any source, shows a tiny italic "Score unavailable" line.
+
+**Deleted 2026-04-19 (mondok/riseballs#85):** the "Live View" button (which stuffed the game into `localStorage.riseballs_live_view` and navigated to `/live`), the "Live Stats" external link to StatBroadcast / SidearmStats feeds.
 
 ### GameRow
 

@@ -1,6 +1,8 @@
 # Database Schema Reference
 
-Table-by-table reference built from `riseballs/db/schema.rb` (version `2026_04_18_222119`, Rails 8.0, Postgres). Extensions: `pg_catalog.plpgsql`.
+Table-by-table reference built from `riseballs/db/schema.rb` (Rails 8.0, Postgres). Extensions: `pg_catalog.plpgsql`.
+
+**Schema changes since 2026-04-18:** migration from mondok/riseballs#85 part 2 (2026-04-19) dropped 7 columns and 3 indexes across `games` and `game_team_links`. See the "What was dropped" callouts below and the sections linked from each table.
 
 All paths below are relative to `riseballs/` unless absolute. Foreign keys are listed under each table; a consolidated list is in the last section.
 
@@ -69,10 +71,6 @@ Canonical record — one row per game, shared across both teams. See `app/models
 | `start_time` | string |  |  |  |
 | `start_time_epoch` | bigint |  |  |  |
 | `ncaa_game_id` | string |  |  | legacy key |
-| `sb_event_id` | string |  |  | StatBroadcast |
-| `sidearm_game_id` | string |  |  | legacy team-level id |
-| `live_stats_url` | string |  |  |  |
-| `live_stats_feed_url` | string |  |  |  |
 | `discovery_source` | string |  |  |  |
 | `data_freshness` | string |  | `"unknown"` | `ncaa_corrected` / `reconciled` freeze date-updates |
 | `locked` | bool |  | false |  |
@@ -82,6 +80,8 @@ Canonical record — one row per game, shared across both teams. See `app/models
 | `away_box_score_id` | string |  |  |  |
 | `created_at` / `updated_at` | datetime | NOT NULL |  |  |
 
+Total column count: **25**.
+
 **Indexes**
 
 - `idx_games_natural_key` — **UNIQUE** `(game_date, home_team_slug, away_team_slug, game_number)`. The doubleheader-safe natural key.
@@ -89,11 +89,16 @@ Canonical record — one row per game, shared across both teams. See `app/models
 - `idx_games_away_boxscore` — UNIQUE `(away_team_slug, away_box_score_id)` WHERE `away_box_score_id IS NOT NULL`
 - `index_games_on_ncaa_contest_id` — UNIQUE WHERE NOT NULL
 - `index_games_on_ncaa_game_id` — UNIQUE WHERE NOT NULL
-- `index_games_on_sb_event_id` — UNIQUE WHERE NOT NULL
-- `index_games_on_sidearm_game_id` — UNIQUE WHERE NOT NULL
 - `index_games_on_away_team_slug`, `index_games_on_home_team_slug`
 - `index_games_on_game_date`, `index_games_on_game_date_and_division`, `index_games_on_game_date_and_state`
 - `index_games_on_state`, `index_games_on_state_and_locked`
+
+**What was dropped 2026-04-19 (mondok/riseballs#85 part 2):**
+
+- Columns: `live_stats_url`, `live_stats_feed_url`, `sb_event_id`, `sidearm_game_id`
+- Indexes: `index_games_on_sb_event_id` (UNIQUE), `index_games_on_sidearm_game_id` (UNIQUE)
+
+These were populated by the StatBroadcast/SidearmStats live-stats machinery deleted in mondok/riseballs#85 part 1. The public game id is now `games.id` surfaced as `rb_<id>` via `Game#url_id`; `ncaa_contest_id` is the authoritative external key.
 
 No DB-level FK to `teams` — the slug-based references are application-only, enforced by `Game#team_slugs_must_exist` (D1 only).
 
@@ -142,19 +147,24 @@ Per-team URLs / external IDs attached to a canonical `Game`.
 | `id` | bigserial PK |  |  |
 | `game_id` | bigint | NOT NULL | FK → `games.id`, ON DELETE CASCADE |
 | `team_slug` | string | NOT NULL |  |
-| `sidearm_game_id` | string |  |  |
+| `sidearm_game_id` | string |  | actively used by the Java scraper for box-score URL discovery (~23,733 rows populated as of 2026-04-19); **retained** |
 | `box_score_url` | string |  |  |
-| `live_stats_url` | string |  |  |
-| `live_stats_feed_url` | string |  |  |
-| `sb_event_id` | string |  |  |
 | `created_at` / `updated_at` | datetime | NOT NULL |  |
+
+Total column count: **7**.
 
 **Indexes**
 
 - `index_game_team_links_on_game_id_and_team_slug` — UNIQUE. One link per team per game.
 - `idx_game_team_links_team_sidearm` — UNIQUE `(team_slug, sidearm_game_id)` WHERE `sidearm_game_id IS NOT NULL`
-- `index_game_team_links_on_sb_event_id` — WHERE NOT NULL (non-unique)
 - `index_game_team_links_on_game_id`
+
+**What was dropped 2026-04-19 (mondok/riseballs#85 part 2):**
+
+- Columns: `live_stats_url`, `live_stats_feed_url`, `sb_event_id`
+- Index: `index_game_team_links_on_sb_event_id` (partial, WHERE NOT NULL)
+
+Matching JPA mappings removed from the Java `GameTeamLink` entity in riseballs-scraper PR #12.
 
 ---
 

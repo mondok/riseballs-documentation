@@ -19,7 +19,7 @@ All file paths in this document are absolute.
 - [Api::StatsController](#apistatscontroller)
 - [Api::AnalyticsController](#apianalyticscontroller)
 - [Api::PitchAnalyticsController](#apipitchanalyticscontroller)
-- [Api::LiveStatsController](#apilivestatscontroller)
+- [~~Api::LiveStatsController~~ (DELETED 2026-04-19)](#apilivestatscontroller--deleted)
 - [Api::DashboardController](#apidashboardcontroller)
 - [Api::FactsController](#apifactscontroller)
 - [Api::StatusController](#apistatuscontroller)
@@ -74,10 +74,9 @@ Action: `Api::GamesController#show` (lines 2-59).
   2. **Fast path:** if `@game_record` exists and `CachedGame.locked?(@game_record)` (all data already enriched & frozen), return cached `game` payload and exit. Never hits the network (lines 5-12).
   3. Otherwise fetch `CachedGame#fetch(..., "game")`, falling back to `GameShowService.build_game_from_scoreboard(gid)` (hits NCAA scoreboard), then `build_game_from_record(@game_record)` (DB-only synthesis). Returns 503 if all three fail (lines 14-19).
   4. `GameShowService.enrich_show_data(data)` — attach team/player metadata to the contest.
-  5. `find_live_stats` — probes StatBroadcast / SidearmStats for a live feed URL. Overrides from `@game_record.live_stats_url` / `sb_event_id` if set (lines 27-30).
-  6. `patch_from_game_record` and `patch_scores_from_boxscore_fetch` — last-resort patching when scoreboard has nulls (lines 36-37).
-  7. Writes computed scores BACK to the `Game` record when the scoreboard has new info — flips `state` to `live` or `final` accordingly (lines 42-56). This is the write-through that keeps the scoreboard view warm.
-- **Response:** raw NCAA-shaped JSON with `contests[0]`, plus added keys: `liveStatsUrl`, `liveStatsFeedUrls`, `internalId`.
+  5. `patch_from_game_record` and `patch_scores_from_boxscore_fetch` — last-resort patching when scoreboard has nulls.
+  6. Writes computed scores BACK to the `Game` record when the scoreboard has new info — flips `state` to `live` or `final` accordingly. This is the write-through that keeps the scoreboard view warm.
+- **Response:** raw NCAA-shaped JSON with `contests[0]`, plus added keys: `internalId`. As of 2026-04-19 (mondok/riseballs#85) the former `liveStatsUrl` / `liveStatsFeedUrls` keys are no longer emitted — the StatBroadcast / SidearmStats live-stats machinery was removed and live scores are now supplied via the `riseballs-live` overlay (`live.riseballs.com/scoreboard`) consumed directly by the browser.
 - **Errors:** `503 { error: "Unable to fetch game data" }` when no data source returns anything.
 - **Caching:** reads from `CachedGame`. `locked?` short-circuit prevents re-scraping. Writes are async via service calls only.
 - **Auth:** public.
@@ -87,8 +86,8 @@ Action: `Api::GamesController#show` (lines 2-59).
 Action: `Api::GamesController#batch` (lines 208-237).
 
 - **Params:** `ids` (comma-separated string of up to 12 external IDs).
-- **Flow:** spawns a `Thread` per ID. Each thread fetches `CachedGame#fetch(gid, "game")` (never scrapes), the last play via `extract_last_play`, and live stats URL. Threads with exceptions return `nil` and are filtered out.
-- **Response:** `{ games: [{ gameID, contest, lastPlay, liveStatsUrl, liveStatsFeedUrls }, ...] }`. Empty `ids` returns `{ games: [] }`.
+- **Flow:** spawns a `Thread` per ID. Each thread fetches `CachedGame#fetch(gid, "game")` (never scrapes) and the last play via `extract_last_play`. Threads with exceptions return `nil` and are filtered out.
+- **Response:** `{ games: [{ gameID, contest, lastPlay }, ...] }`. Empty `ids` returns `{ games: [] }`. Since 2026-04-19 no `liveStatsUrl` / `liveStatsFeedUrls` keys are included.
 - **Caching:** cache-only read. No scraping path.
 - **Auth:** public.
 
@@ -371,23 +370,33 @@ File: `/Users/mattmondok/Code/riseballs-parent/riseballs/app/controllers/api/sco
 
 ### GET /api/scoreboard
 
-Action: `Api::ScoreboardController#index` (lines 2-64).
+Action: `Api::ScoreboardController#index`.
 
 - **Params:** `division` (default `"d1"`), `date` (default `Date.today`).
 - **Source:** `Game` table filtered by date + division, excluding cancelled / slugless rows, scoped to rows with at least one `team_games` row (`EXISTS` subquery).
-- **Live refresh (today only, lines 14-17, 68-104):** If `parsed_date == Date.today`, identifies candidates — non-final, non-locked games whose `start_time_epoch` has already passed. Inside a 5-second `Timeout`, re-fetches each via `CachedGame.fetch(game, "game") || GameShowService.build_game_from_scoreboard(gid)` and writes `home_score/away_score/current_period/state` back to the `Game` record. Timeout errors are swallowed so the response never blocks.
-- **Score recovery (lines 36-43):** If a game is `final` but scores are nil, tries `CachedGame.fetch(game, "athl_boxscore")` and sums the linescore for non-aggregate periods.
-- **Response:**
+- **Live refresh (today only):** If `parsed_date == Date.today`, identifies candidates — non-final, non-locked games whose `start_time_epoch` has already passed. Inside a 5-second `Timeout`, re-fetches each via `CachedGame.fetch(game, "game") || GameShowService.build_game_from_scoreboard(gid)` and writes `home_score/away_score/current_period/state` back to the `Game` record. Timeout errors are swallowed so the response never blocks.
+- **Score recovery:** If a game is `final` but scores are nil, tries `CachedGame.fetch(game, "athl_boxscore")` and sums the linescore for non-aggregate periods.
+- **Response shape as of 2026-04-19 (mondok/riseballs commit `263a684`, PR #83):**
   ```json
   { "games": [
-      { "game": { "gameID": "rb_123", "gameState": "pre"|"live"|"final",
-                   "startDate": "mm/dd/YYYY", "startTime": "...",
-                   "startTimeEpoch": "...", "currentPeriod": "...",
-                   "finalMessage": "...", "url": "/game/rb_123",
-                   "home": {...build_team...}, "away": {...build_team...} } }, ... ],
+      { "game": {
+          "gameID": "rb_123",                // stable public id via Game#url_id; always "rb_<id>"
+          "ncaaContestId": "12345",          // NCAA contest id for live-overlay join; may be null
+          "gameNumber": 1,                   // doubleheader disambiguator (PR #83)
+          "gameState": "pre"|"live"|"final",
+          "startDate": "mm/dd/YYYY",
+          "startTime": "...",
+          "startTimeEpoch": "...",
+          "currentPeriod": "...",
+          "finalMessage": "...",
+          "url": "/game/rb_123",
+          "home": {...build_team...},
+          "away": {...build_team...}
+      } }, ... ],
     "conferences": [...unique team conferences...],
     "_source": "games_table" }
   ```
+- The `gameID` field was decoupled from NCAA contest id on 2026-04-19 so public URLs stay stable across NCAA id changes. The new `ncaaContestId` field is the **primary** key used by the live-overlay reconciler in `riseballs-live` (match ladder: `ncaaContestId` → `(homeSlug, awaySlug, gameNumber)` → reversed-slug rescue; see [reference/matching-and-fallbacks.md](../reference/matching-and-fallbacks.md)).
 - `build_team` returns `{ names: { char6, short, full, seo }, conference, score, winner, seed, rank, logo_url }`.
 - **Caching:** reads from `CachedGame`; writes back to `Game` in-place. No explicit Rails.cache use.
 - **Auth:** public.
@@ -500,47 +509,11 @@ Action: `Api::PitchAnalyticsController#show` (lines 5-32).
 
 ---
 
-## Api::LiveStatsController
+## Api::LiveStatsController — **DELETED 2026-04-19**
 
-File: `/Users/mattmondok/Code/riseballs-parent/riseballs/app/controllers/api/live_stats_controller.rb` (59 LOC).
+File: `app/controllers/api/live_stats_controller.rb` — **removed** in mondok/riseballs#85 part 1 (PR #90). All four actions (`batch`, `boxscore_batch`, `sidearm_batch`, `resolve`) and their routes are gone. The four supporting services (`StatBroadcastService`, `SidearmStatsService`, `GameIdentityService`, the old `EspnScoreboardService`) were deleted in the same sweep along with the `/live` SPA page (`LiveView.jsx`), the `addToLiveView` button, the `/live` route, the Live nav entry, and the 10s `fetchLiveStats` poller on `Scoreboard.jsx`.
 
-`wrap_parameters false` (line 2) — POST JSON bodies are NOT wrapped under a controller-name root key. Routes are top-level (see routes doc).
-
-### GET /api/live_stats/batch
-
-Action: `Api::LiveStatsController#batch` (lines 5-12).
-
-- **Params:** `ids` (comma-separated StatBroadcast event IDs, capped at 12).
-- **Delegates to:** `StatBroadcastService.fetch_live_batch(ids)`.
-- **Response:** `{ games: { id => payload }.compact }`. Empty `ids` => `{ games: {} }`.
-- **Auth:** public.
-
-### GET /api/live_stats/boxscore_batch
-
-Action: `Api::LiveStatsController#boxscore_batch` (lines 33-40).
-
-- **Params:** `ids` (capped at 6 — tighter because fetches are heavier).
-- **Delegates to:** `StatBroadcastService.fetch_print_boxscore_batch(ids)`.
-- **Response:** `{ boxscores: {...} }`.
-- **Auth:** public.
-
-### POST /api/live_stats/sidearm_batch
-
-Action: `Api::LiveStatsController#sidearm_batch` (lines 17-29).
-
-- **Body:** `{ games: [{ key: "gameID", feeds: { home: "url", away: "url" } }, ...] }` — capped at 12.
-- **Flow:** `Thread` per entry; each calls `SidearmStatsService.fetch_and_merge(feeds)` and returns `[key, merged_payload]`.
-- **Response:** `{ games: { key => merged }.compact }`.
-- **Auth:** public.
-
-### POST /api/live_stats/resolve
-
-Action: `Api::LiveStatsController#resolve` (lines 46-58).
-
-- **Body:** `{ urls: { "gameID1": "https://.../statmonitr.php?gid=ore", ... } }` — capped at 12.
-- **Flow:** `Thread` per URL; each calls `StatBroadcastService.resolve_monitor_url(url)`. Only URLs that resolve to a numeric event ID (via `extract_event_id`) are retained.
-- **Response:** `{ resolved: { "gameID1": "https://stats.statbroadcast.com/broadcast/?id=12345", ... } }`.
-- **Auth:** public.
+**Replacement:** live-score overlay is now served by the standalone `riseballs-live` Java service at `https://live.riseballs.com/scoreboard?date=YYYY-MM-DD`. The browser calls it directly in parallel with `/api/scoreboard`; `app/javascript/lib/liveOverlay.js` merges the two responses client-side. See [live/01-endpoints.md](../live/01-endpoints.md) and [reference/matching-and-fallbacks.md](../reference/matching-and-fallbacks.md) (overlay match ladder).
 
 ---
 
@@ -814,6 +787,6 @@ Action: `OgImagesController#team`.
 
 - **CSRF:** disabled in `Api::BaseController` and auth controllers (both `Auth::SessionsController` and `Auth::RegistrationsController` call `skip_before_action :verify_authenticity_token`). Admin controllers are plain `ActionController::Base` and don't have CSRF in the first place.
 - **Browser filter:** `ApplicationController#reject_unsupported_browser` runs for every request that hits an `ApplicationController` subclass. Returns 406 with `public/406-unsupported-browser.html` for legacy browsers UNLESS the User-Agent matches `/bot|crawl|spider|externalhit|facebot|whatsapp|telegram|slack|discord|preview|cfnetwork|linkedin|curl|wget/i`. Admin controllers inherit from `ActionController::Base` directly and bypass this.
-- **Parameter truncation:** several endpoints cap batch sizes defensively — `games#batch` (12 ids), `live_stats#batch` (12), `live_stats#boxscore_batch` (6), `live_stats#sidearm_batch` (12), `live_stats#resolve` (12).
+- **Parameter truncation:** `games#batch` caps batch size at 12 ids defensively. The former `live_stats#*` caps are gone with the controller's deletion.
 - **Predict service env vars:** `PREDICT_SERVICE_URL`, `PREDICT_SERVICE_TIMEOUT_SECONDS` — consumed by `PredictServiceClient` (not the controller).
 - **Negative cache key format:** `pbp_miss:<gid>` in Rails.cache, 5-minute TTL. Set and cleared by `Api::GamesController#play_by_play`.

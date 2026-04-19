@@ -141,7 +141,7 @@ Mirrors the on-demand `Api::GamesController#play_by_play` so PBP is ready in cac
 
 1. Return early if `CachedGame.fetch(game, "athl_play_by_play")` already exists -- idempotent.
 2. Resolve team slugs: prefer the `seoname` entries from a cached boxscore; otherwise fall back to `game.home_team_slug` + `away_team_slug` so even orphan `rb_*` games get attempted.
-3. Return if there are no slugs AND no `live_stats_url`/`live_stats_feed_url`.
+3. Return if there are no slugs (the historical fallback to `live_stats_url`/`live_stats_feed_url` was removed 2026-04-19 along with those columns).
 4. Call `AthleticsBoxScoreService.fetch(game.best_external_id, seo_slugs)`. If it returns no PBP -> raise `PbpNotReadyError` (retries).
 5. `CachedGame.store_for_game(game, "athl_play_by_play", pbp)`. If the quality gate rejects the payload -> raise `PbpNotReadyError` (retries).
 6. `PitchByPitchParser.parse_from_cached_pbp!` to populate `plate_appearances` + `pitch_events`.
@@ -236,7 +236,7 @@ Detects and resolves duplicate "ghost" games (final games that don't correspond 
    - **`:on_schedule`** -- ensure both `GameTeamLink` rows exist, keep the game.
    - **`:not_on_schedule`** -- `try_roster_resolution`: compare the ghost's PGS player_names against nearby games (+/- 1 day) for the same team; if >= 80% roster overlap with another game, the ghost is a misassigned duplicate -- delete. Otherwise if `can_safely_delete?` (no PGS, or PGS identical to sibling's), delete. Else flag for review.
    - **`:unverifiable`** (Java scraper unreachable) -- try roster resolution first; then delete only if no links and no stats.
-4. `delete_ghost` destroys PGS, `game_team_links`, `cached_games`, `game_identifiers` under a transaction, nils unique IDs (`ncaa_contest_id`, `ncaa_game_id`, `sb_event_id`), destroys the Game.
+4. `delete_ghost` destroys PGS, `game_team_links`, `cached_games`, `game_identifiers` under a transaction, nils unique IDs (`ncaa_contest_id`, `ncaa_game_id`), destroys the Game. (The former `sb_event_id` nil-out is gone — that column was dropped 2026-04-19.)
 5. `flag_for_review` creates a pending `GameReview` with `review_type: "duplicate"` and `proposed_changes: { action: "delete", sibling_game_id: ... }`.
 
 ### `TeamAssignmentAuditJob`
@@ -310,7 +310,7 @@ Returned counts: `gamesCreated`, `gamesUncancelled`, `gamesDateCorrected`, `game
 
 Ruby-side diff against the NCAA official API (no Java scraper). For each day from `season_start` (Feb 1 of current year) through yesterday, across D1/D2:
 
-1. Fetch NCAA contests via `NcaaScoreboardService.contests_for_date`.
+1. Fetch NCAA contests directly via the NCAA GraphQL API (historically delegated to `NcaaScoreboardService.contests_for_date`; that Ruby class was deleted 2026-04-19 and the job now inlines the same persisted-query call).
 2. For each contest, resolve home/away seonames via `SLUG_ALIASES` (handles `uiw`/`incarnate-word`, `mcneese`/`mcneese-st`), then find matching Game by (date, slugs) in either order or by `ncaa_contest_id`.
 3. **Score mismatch** (final only): compare `home_t["score"]` vs `game.home_score`. **Auto-fixes** when different.
 4. **Team mismatch**: compares sorted slug arrays. **Auto-fixes** (updates `home_team_slug`, `away_team_slug`, scores) when both NCAA teams exist in our DB.
@@ -320,14 +320,16 @@ Returns a hash with counts. Good for ad-hoc audits; not wired to anything.
 
 ### `NcaaGameDiscoveryJob`
 
-**File:** `app/jobs/ncaa_game_discovery_job.rb` (24 lines)
+**File:** `app/jobs/ncaa_game_discovery_job.rb`
 **Queue:** `default`
-**Schedule:** none. Manual. `db/seeds.rb` prints "Run NcaaGameDiscoveryJob.perform_now('season') to backfill all games."
+**Schedule:** `*/20 * * * *` (every 20 minutes) + nightly season sweep — re-enabled 2026-04-19 (mondok/riseballs#82). Broken since 2026-04-12; contest-id coverage recovered from ~0% to ~92% after this re-enable.
 **Lock:** `lock_singleton ttl: 3600`
 **Inputs:** `options = { mode: "today" | "season" }`
 
-- `mode: "today"` (default): `NcaaScoreboardService.sync_date(Date.current)` and `Date.current - 1`.
-- `mode: "season"`: `NcaaScoreboardService.sync_season`.
+- `mode: "today"` (default): hits the NCAA GraphQL API for today and yesterday, updates `games.ncaa_contest_id` + `start_time_epoch`.
+- `mode: "season"`: full-season sweep; used by the nightly run.
+
+**Note:** historically this job delegated to the Ruby `NcaaScoreboardService`, which was deleted on 2026-04-19. The job now calls the NCAA GraphQL API directly (same persisted-query hash used by the Java scraper and `riseballs-live`, keeping the three consumers aligned).
 
 ---
 

@@ -131,7 +131,7 @@ Locks every unlocked final `cached_games` row via `CachedGame.try_lock!`. Run af
 ### `rake games:sync_past[division,days]`
 
 **File:** `lib/tasks/games.rake`
-Walks NCAA scoreboard from season start (D1: 2026-02-06, D2: 2026-01-30) through yesterday (or last N days), syncs games via `NcaaScoreboardService.sync_date`, then fetches box scores via `BoxscoreFetchService.fetch` for any final game missing one. Examples:
+Walks NCAA scoreboard from season start (D1: 2026-02-06, D2: 2026-01-30) through yesterday (or last N days), syncs games via the NCAA GraphQL API (historically `NcaaScoreboardService.sync_date`; that Ruby class was deleted 2026-04-19, and the task now calls the API directly with the same persisted-query hash). Then fetches box scores via `BoxscoreFetchService.fetch` for any final game missing one. Examples:
 - `rake games:sync_past` -- D1 + D2 full season
 - `rake games:sync_past[d1]` -- D1 only
 - `rake games:sync_past[d1,14]` -- D1, last 14 days only
@@ -153,7 +153,7 @@ The classic end-to-end fill pipeline -- links games, scrapes boxscores via Cloud
 All namespaced under `games:`:
 - `games:trigram_test` (`TEAM=...`) -- shows roster vs box score name mapping with trigram + prefix match scoring. Diagnostic.
 - `games:fix_duplicate_games` -- finds/removes duplicates with same date+home+score but different away.
-- `games:fix_orphan_slugs` -- fixes known orphan team slugs in games.
+- `games:fix_orphan_slugs` -- fixes known orphan team slugs in games. `known_mappings` updated 2026-04-19 (mondok/riseballs#81, PR #92): the last stale `east-tex-am` reference was changed to `east-texas-am` (the canonical slug on the Rails side). Note: the Java scraper's `NcaaApiClient.SEONAME_MAP` still rewrites `tex-am-commerce` → `east-tex-am` on the Java side — that mapping is unchanged (different layer).
 - `games:deduplicate` (`DRY_RUN=1`) -- another dedup pass; merges true duplicates (not doubleheaders).
 - `games:relink_cached_data` -- sets `cached_games.game_id` from `ncaa_game_id` where missing.
 - `games:correct_slugs` -- detects + corrects team slug mismatches between boxscores and Game rows.
@@ -207,7 +207,7 @@ Finds AI-extracted games where the box score URL is bad or missing, scrapes team
 ### `rake games:discover[mode,date]`
 
 **File:** `lib/tasks/ncaa_discovery.rake`
-Syncs games from the NCAA.com GraphQL API via `NcaaScheduleService` (distinct from `NcaaScoreboardService`).
+Syncs games from the NCAA.com GraphQL API. Historically delegated to `NcaaScheduleService`; that Ruby class was deleted 2026-04-19. The task (and `NcaaGameDiscoveryJob`, which this task is a CLI wrapper for) now calls the API inline using the same persisted-query hash as the Java scraper and `riseballs-live`.
 - `rake games:discover` or `rake games:discover[today]` -- sync today + yesterday, D1 + D2.
 - `rake games:discover[season]` -- full-season backfill, D1 + D2.
 - `rake games:discover[date,2026-04-01]` -- specific date.
@@ -302,7 +302,7 @@ For every team with missing `athletics_url`, calls `RosterService#discover_athle
 
 **File:** `lib/tasks/rosters.rake`
 **Args:** `division` = `d1` (default) or `d2`, `days` = 14 default.
-Warms the NCAA scoreboard cache for the last N days by calling `NcaaScoreboardService.contests_for_date` per day.
+Warms the NCAA scoreboard cache for the last N days by calling the NCAA GraphQL API per day (historically via `NcaaScoreboardService.contests_for_date`; the call site was inlined when that Ruby class was deleted 2026-04-19).
 
 ### `rake stats:warm_schedules`
 

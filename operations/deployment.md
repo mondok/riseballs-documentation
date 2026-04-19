@@ -1,6 +1,6 @@
 # Deployment
 
-All three services run on Dokku (self-hosted at `ssh.edentechapps.com` / `ssh.mondokhealth.com`). One Dokku app per service.
+All four services run on Dokku (self-hosted at `ssh.edentechapps.com` / `ssh.mondokhealth.com`). One Dokku app per service.
 
 ---
 
@@ -11,8 +11,11 @@ All three services run on Dokku (self-hosted at `ssh.edentechapps.com` / `ssh.mo
 | `riseballs` | Rails (web + worker) | `riseballs.web:3000` | `riseballs.com` |
 | `riseballs-scraper` | Java Spring Boot | `riseballs-scraper.web:8080` | internal only |
 | `riseballs-predict` | Python FastAPI | `riseballs-predict.web:8080` | internal only |
+| `riseballs-live` | Java Spring Boot (stateless overlay) | `riseballs-live.web:8080` | `live.riseballs.com` |
 
-Only the Rails app is publicly exposed. The scraper and predict services are reachable only from other Dokku apps on the internal network.
+`riseballs` and `riseballs-live` are publicly exposed (both behind Cloudflare tunnels). The scraper and predict services are reachable only from other Dokku apps on the internal network.
+
+`riseballs-live` is intentionally isolated — it has no `DATABASE_URL`, no `REDIS_URL`, and cannot reach `riseballs-scraper.web` or `riseballs.web` from its container env. See [live/03-deployment.md](../live/03-deployment.md) and the service's charter at `riseballs-live/CLAUDE.md` for the forbidden-scope rules.
 
 ---
 
@@ -31,6 +34,9 @@ git remote -v
 
 # riseballs-predict (Python)
 # dokku    dokku@ssh.edentechapps.com:riseballs-predict
+
+# riseballs-live (Java, mondok/riseballs-live)
+# dokku    dokku@ssh.mondokhealth.com:riseballs-live
 ```
 
 ---
@@ -71,6 +77,16 @@ git push dokku master
 ```
 
 Dockerfile-based. `pip install` from `pyproject.toml` at build time.
+
+### riseballs-live
+
+```sh
+git push dokku master
+```
+
+Dockerfile-based (Eclipse Temurin alpine + Gradle `bootJar`). Boot time under 1s. No env-var wiring needed beyond the defaults in `application.properties`; CORS allowlist, cache TTLs, rate-limit, and upstream pool sizing are all configurable via `riseballs.*` properties (see [live/03-deployment.md](../live/03-deployment.md) for the full list).
+
+**Public route:** `live.riseballs.com` → Cloudflare Tunnel Published Application Route → `http://localhost:80` → container port 8080. Do NOT add a CNAME manually; Published Application Routes manage DNS automatically.
 
 ---
 
@@ -125,6 +141,8 @@ Services reach each other by internal Dokku hostname:
 | Rails web/worker | Python predict | `http://riseballs-predict.web:8080` |
 | Java scraper | Rails | (no — Java never calls Rails) |
 | Python predict | DB only | `postgres://...` |
+| Browser | riseballs-live | `https://live.riseballs.com/scoreboard?date=` (public) |
+| riseballs-live | anything internal | **blocked at container env level**. No DB URL, no Redis URL, no internal hostnames reachable. This is enforced by Dokku config, not by code. |
 
 **Critical:** `dokku run` one-off containers do NOT have access to the internal network. They cannot resolve `riseballs-scraper.web` or `riseballs-predict.web`. Any rake task that calls `JavaScraperClient` or `PredictServiceClient` must run via `dokku enter`, not `dokku run`.
 
@@ -169,6 +187,25 @@ See [operations/database-access.md](database-access.md).
 
 See [predict/07-config-and-deployment.md](../predict/07-config-and-deployment.md).
 
+### `riseballs-live`
+
+| Var | Purpose |
+|-----|---------|
+| `PORT` | HTTP port (default 8080) |
+| (no other required env vars) | All tunables are in `src/main/resources/application.properties` and can be overridden via `SPRING_APPLICATION_JSON` or `-D` args, but defaults are intended for production use |
+
+Key tunables (defaults shown):
+
+- `riseballs.cache.fresh-ttl-seconds=30`
+- `riseballs.cache.stale-ttl-seconds=300`
+- `riseballs.upstream.joint-timeout-ms=12000`
+- `riseballs.upstream.pool.core=4`, `max=8`, `queue=16`
+- `riseballs.ratelimit.capacity=60`, `refill-per-second=1`
+- `server.shutdown=graceful` + `spring.lifecycle.timeout-per-shutdown-phase=20s`
+- `spring.mvc.async.request-timeout=15000` (servlet-level hard cap, 504 on exceed)
+
+**Non-negotiable config (prison):** no `DATABASE_URL`, `REDIS_URL`, `RISEBALLS_SCRAPER_URL`, or internal hostname variables are set in this app's env. The Dokku app config must never grow these; that's the enforcement layer. See [live/03-deployment.md](../live/03-deployment.md).
+
 ---
 
 ## Postgres
@@ -199,6 +236,9 @@ ssh dokku@ssh.edentechapps.com logs riseballs-scraper -t
 
 # Predict
 ssh dokku@ssh.edentechapps.com logs riseballs-predict -t
+
+# riseballs-live (structured JSON access log per request)
+ssh dokku@ssh.mondokhealth.com logs riseballs-live -t
 ```
 
 Or per-process (web / worker):
@@ -218,6 +258,9 @@ ssh dokku@ssh.mondokhealth.com ps:restart riseballs
 
 # Java scraper
 ssh dokku@ssh.edentechapps.com ps:restart riseballs-scraper
+
+# riseballs-live
+ssh dokku@ssh.mondokhealth.com ps:restart riseballs-live
 ```
 
 Soft-restart via env change (usually preferred, applies without full rebuild):
@@ -245,6 +288,30 @@ After Java scraper deploy:
    ```
 2. Trigger a small scrape via `/api/scrape` to confirm DB writes work.
 
+After `riseballs-live` deploy:
+
+1. Health probe:
+   ```sh
+   curl -s https://live.riseballs.com/health
+   # {"status":"ok"}
+   ```
+2. Smoke-test the scoreboard endpoint:
+   ```sh
+   curl -s 'https://live.riseballs.com/scoreboard?date=2026-04-19' | jq '.source, (.events | length)'
+   # "fresh" (first hit) then "cache" (subsequent hits within 30s)
+   ```
+3. Confirm CORS preflight allows `riseballs.com`:
+   ```sh
+   curl -sI -H 'Origin: https://riseballs.com' -H 'Access-Control-Request-Method: GET' \
+     -X OPTIONS https://live.riseballs.com/scoreboard?date=2026-04-19 | grep -i access-control
+   ```
+4. Confirm rate limit works:
+   ```sh
+   for i in $(seq 1 80); do curl -s -o /dev/null -w "%{http_code}\n" \
+     'https://live.riseballs.com/scoreboard?date=2026-04-19'; done | sort | uniq -c
+   # Expect first 60 to be 200, rest to be 429 within a one-minute window.
+   ```
+
 ---
 
 ## Related docs
@@ -253,3 +320,4 @@ After Java scraper deploy:
 - [operations/runbook.md](runbook.md)
 - [scraper/07-config-and-deployment.md](../scraper/07-config-and-deployment.md)
 - [predict/07-config-and-deployment.md](../predict/07-config-and-deployment.md)
+- [live/03-deployment.md](../live/03-deployment.md)

@@ -79,7 +79,6 @@ erDiagram
         string state
         string ncaa_game_id UK
         bigint ncaa_contest_id UK
-        string sb_event_id UK
         bool locked
         string data_freshness
     }
@@ -99,7 +98,6 @@ erDiagram
         bigint game_id FK
         string team_slug
         string sidearm_game_id
-        string sb_event_id
         string box_score_url
     }
 

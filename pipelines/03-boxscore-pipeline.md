@@ -124,6 +124,23 @@ See [rails/13-rake-tasks.md](../rails/13-rake-tasks.md).
 - **Locked games:** if `game.locked == true`, fast-path: skip the fetch, return the DB-recorded score summary without calling external sources.
 - **Pre-game 404 guard:** if game is `scheduled` and has no scores, return 404 (no box score exists yet).
 - **Box score discovery gate:** if `state == scheduled` and the fetched box score has runs > 0 on R linescore, reject (likely prior meeting in the series). See issue #65 context in [pipelines/02-pbp-pipeline.md](02-pbp-pipeline.md#the-box-score-discovery-bug-issue-65-fixed-april-18-2026).
+- **On-demand Java scrape (issue #87, April 19, 2026):** if all existing fallbacks fail AND the game is "probably finished" (final, or start_time_epoch >1h ago), the controller calls `JavaScraperClient.scrape_game(game_id)` synchronously and retries `BoxscoreFetchService.best_from_db`. Rate-limited via `Rails.cache.write("bs_ondemand:<game_id>", true, expires_in: 2.minutes)`. This self-heals the stuck-scheduled-game case on user request without waiting for the 15-minute cron tick.
+
+## Cron-tick scrape filter (write path)
+
+Two jobs scrape box scores on a schedule:
+
+- `GamePipelineJob#fetch_missing_boxscores` -- every 15 min, today/yesterday.
+- `BoxScoreBackfillJob` -- 6 AM daily, last 60 days.
+
+Both (as of issue #87) filter eligible games by:
+
+```ruby
+"state = 'final' OR (state = 'scheduled' AND start_time_epoch IS NOT NULL AND start_time_epoch < ?)"
+# cutoff = 4.hours.ago.to_i
+```
+
+The widened predicate catches "stuck-scheduled" Games whose state has not flipped to final yet. Soft ceiling: scraper's own quality gates (`good_boxscore?`, `scores_match?`) reject bad data if the game really has not started.
 
 ---
 

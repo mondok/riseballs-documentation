@@ -45,14 +45,25 @@ See [pipelines/01-game-pipeline.md](../pipelines/01-game-pipeline.md) and [rails
 
 ## Phase 2 — Live (game in progress)
 
-**Trigger:** `Api::ScoreboardController` requests — driven by the frontend scoreboard polling (every 30–60s per page).
+**Trigger:** browser scoreboard poll (every 30s for today's date). Two parallel fetches:
 
-The scoreboard render path is a fan-out via `Concurrent::FixedThreadPool`:
-1. For each game-of-interest, call `NcaaScoreboardService` and other sources in parallel (POOL_SIZE=10, 15s joint wait). (`EspnScoreboardService` exists as a secondary source but is **currently dead code** — tests-only, no production callers as of 2026-04-19. See [rails/06-ingestion-services.md](../rails/06-ingestion-services.md#espnscoreboardservice--dead-code-tests-only).)
-2. Merge results; extract live scores, inning, pitcher ids.
-3. Writes back to `Game`: `state = live`, `home_score`, `away_score`, `current_inning`.
+1. **Rails `GET /api/scoreboard?date=&division=`** — authoritative base. Returns all games from the DB for that date, each with `gameID: "rb_<id>"` (stable forever, decoupled from NCAA contest id), `ncaaContestId` (when known), and `gameNumber` (doubleheader disambiguator).
+2. **`riseballs-live` `GET live.riseballs.com/scoreboard?date=YYYY-MM-DD`** — transient overlay. Fetches NCAA D1+D2 + ESPN public scoreboard feeds in parallel behind a 12s joint timeout, reconciles them via `ScoreboardReconciler`, and returns a compact event list. Heavily cached: Caffeine fresh 30s → stale 5m → negative 10s. Single-flight on miss.
 
-Live games don't persist boxscore/PBP yet (too volatile). `Api::GamesController#boxscore` and `#play_by_play` will call external sources on-demand during live games (see [pipelines/03-boxscore-pipeline.md](../pipelines/03-boxscore-pipeline.md) and [pipelines/02-pbp-pipeline.md](../pipelines/02-pbp-pipeline.md)).
+The client (`app/javascript/lib/liveOverlay.js`) merges the two responses and applies overlay scores/state only on non-final Rails games. The match ladder is documented in [reference/matching-and-fallbacks.md](../reference/matching-and-fallbacks.md):
+1. Primary match on `ncaaContestId`.
+2. Fallback on `(homeSlug, awaySlug, gameNumber)` position pairing.
+3. Reversed-slug rescue: if the overlay has the home/away flipped relative to Rails, apply scores with the swap.
+4. Ambiguity guard: if multiple overlay events match one Rails game, skip the overlay for that row.
+5. Final protection: if Rails says the game is final, the overlay never overrides.
+
+Rails itself also writes `state`/scores back to `Game` during its own controller handler when `Api::ScoreboardController#index` detects newly-arriving data (unchanged today). Live games still don't persist boxscore/PBP on the Rails side yet (too volatile). `Api::GamesController#boxscore` and `#play_by_play` will call external sources on-demand during live games (see [pipelines/03-boxscore-pipeline.md](../pipelines/03-boxscore-pipeline.md) and [pipelines/02-pbp-pipeline.md](../pipelines/02-pbp-pipeline.md)).
+
+**What changed 2026-04-19 (mondok/riseballs#82, #83, #84, #85, mondok/riseballs-live#1):**
+- Ruby `EspnScoreboardService` was deleted. All ESPN ingestion moved to `riseballs-live`.
+- Ruby `NcaaScoreboardService` and `NcaaScheduleService` were both deleted in Phase 0 (commit `42b585a`). NCAA live scores now come from `riseballs-live` (via its own `NcaaScoreboardClient`). NCAA contest-id backfill on the Rails side runs through `NcaaGameDiscoveryJob`, which calls the NCAA GraphQL API directly (same persisted-query hash the other two consumers use).
+- StatBroadcast / SidearmStats live-stats machinery (`LiveView` page, `/api/live_stats/*`, `addToLiveView` button, 10s `fetchLiveStats` poller on Scoreboard) was removed. The overlay replaces all of it.
+- `gameID` is now `"rb_<id>"` forever; the legacy NCAA contest id lives in a separate field (`ncaaContestId`) alongside. `game/<contest_id>` legacy URLs still resolve via `Game.find_by_any_id`.
 
 ---
 

@@ -1,38 +1,41 @@
 # System Overview
 
-Riseballs is three cooperating services over one shared Postgres database.
+Riseballs is four cooperating services: three share one Postgres database (Rails, Java scraper, Python predict) and a fourth stateless overlay (`riseballs-live`) is called directly by the browser.
 
 ```mermaid
 flowchart LR
     User[Browser] -->|HTTPS| Rails
+    User -->|HTTPS<br/>GET /scoreboard?date=| Live[riseballs-live<br/>Java 21 / Spring Boot<br/>stateless, no DB]
     Rails[riseballs<br/>Rails 8 + Sidekiq + React SPA] -->|HTTP /api/reconcile/*<br/>/api/roster/*| Scraper[riseballs-scraper<br/>Java 21 / Spring Boot]
     Rails -->|HTTP /v1/matchups/*| Predict[riseballs-predict<br/>Python 3.12 / FastAPI + XGBoost]
     Rails <-->|ActiveRecord / JPA<br/>same DB| DB[(Postgres<br/>riseballs_db)]
     Scraper <-->|JPA write path| DB
     Predict -->|read-only| DB
     Scraper -->|Jsoup / HttpClient| External[(Sidearm, WMT,<br/>NCAA, WordPress)]
+    Live -->|NCAA D1+D2 GraphQL<br/>ESPN public scoreboard| ExternalLive[(NCAA sdataprod,<br/>ESPN site.api)]
     Rails -->|legacy, preferred path<br/>is Java scraper| External
 ```
 
 ---
 
-## Why three services
+## Why four services
 
 | Concern | Why it's in this service |
 |---------|--------------------------|
-| **HTTP surface** | Rails — single Devise auth, single SPA mount, everything users hit |
-| **Cron** | Rails (Sidekiq cron) — 12 scheduled jobs, unified scheduling point (see [rails/14-schedule.md](../rails/14-schedule.md)) |
-| **Heavy scraping + reconciliation** | Java — JVM concurrency (virtual threads + semaphores) handles 592 teams' schedule pages in one pass far more reliably than Ruby with Sidekiq workers; Jsoup is also the strongest HTML parser available |
-| **Roster/coach augmentation** | Java — Sidearm bio pages, WordPress, WMT all hit from one service so URL discovery + parsing + update lives together |
-| **Predictions** | Python — XGBoost + isotonic calibration + scipy/numpy feature engineering is painful to replicate in Ruby; Python ecosystem is the natural fit |
+| **HTTP surface** | Rails — single Devise auth, single SPA mount, everything authoritative users hit |
+| **Cron** | Rails (Sidekiq cron) — unified scheduling point (see [rails/14-schedule.md](../rails/14-schedule.md)) |
+| **Heavy scraping + reconciliation** | Java (`riseballs-scraper`) — JVM concurrency (virtual threads + semaphores) handles 592 teams' schedule pages in one pass far more reliably than Ruby with Sidekiq workers; Jsoup is also the strongest HTML parser available |
+| **Roster/coach augmentation** | Java (`riseballs-scraper`) — Sidearm bio pages, WordPress, WMT all hit from one service so URL discovery + parsing + update lives together |
+| **Predictions** | Python (`riseballs-predict`) — XGBoost + isotonic calibration + scipy/numpy feature engineering is painful to replicate in Ruby; Python ecosystem is the natural fit |
+| **Live-score overlay** | Java (`riseballs-live`, shipped 2026-04-19, [live/](../live/)) — stateless proxy that reconciles NCAA (D1+D2) + ESPN public feeds into a single scoreboard payload. No DB, no Redis, no internal hostnames. Browser calls it directly in parallel with Rails and merges client-side for the live-game overlay. |
 
-Rails is the front door and the orchestrator. Java is a scraper that happens to have a JPA write path. Python is a pure read-compute-respond service.
+Rails is the front door and the orchestrator. `riseballs-scraper` is a scraper that happens to have a JPA write path. `riseballs-predict` is a pure read-compute-respond service. `riseballs-live` is a read-only public proxy isolated from every other component (see [live/00-overview.md](../live/00-overview.md) for the charter).
 
 ---
 
 ## Shared state
 
-All three services talk to the same Postgres database (`riseballs_db` in prod, `riseballs_local` in dev). Only Rails and Java write. Python reads.
+Only three of the four services share the Postgres database (`riseballs_db` in prod, `riseballs_local` in dev): Rails, the Java scraper (`riseballs-scraper`), and Python predict. Only Rails and `riseballs-scraper` write; Python reads. `riseballs-live` has **no database access at all** — its container doesn't have a `DATABASE_URL`, doesn't have a `REDIS_URL`, and can't reach `riseballs-scraper.web` or the internal Rails hostname (see its charter in `riseballs-live/CLAUDE.md`).
 
 **Writes are not symmetric.** See [architecture/01-service-boundaries.md](01-service-boundaries.md) for the detailed split, but the headline hazard:
 
@@ -44,21 +47,55 @@ This is a known live hazard, not a bug to fix in one PR. It shapes how operators
 
 ## Deployment shape
 
-All three services run on a single self-hosted Dokku box (`ssh.edentechapps.com` / `ssh.mondokhealth.com`). One app per service:
+All four services run on a single self-hosted Dokku box (`ssh.edentechapps.com` / `ssh.mondokhealth.com`). One app per service:
 
 | Dokku app | Git remote | Internal hostname | Public URL |
 |-----------|-----------|------------------|-----------|
 | `riseballs` | `dokku` (main branch) | `riseballs.web:3000` | `riseballs.com` (Cloudflare tunnel) |
 | `riseballs-scraper` | `dokku` | `riseballs-scraper.web:8080` | internal only |
 | `riseballs-predict` | `dokku` | `riseballs-predict.web:8080` | internal only |
+| `riseballs-live` | `dokku` (`mondok/riseballs-live`) | `riseballs-live.web:8080` | `live.riseballs.com` (Cloudflare tunnel) |
 
 Services reach each other by internal Dokku hostname. `dokku run` one-off containers **cannot** reach other Dokku apps (the internal network is only attached to `web`/`worker` containers) — that's why `dokku enter` is required for any rake task that calls Java. See [operations/database-access.md](../operations/database-access.md).
 
-Cloudflare tunnel fronts the public site (`edentechapps` / `mondokhealth` tunnel), handling SSL termination. No Let's Encrypt on Dokku.
+`riseballs-live` is the only other publicly-exposed service. It routes `live.riseballs.com` through a Cloudflare tunnel Published Application Route to `http://localhost:80` → container port 8080. CORS is hardcoded to the riseballs.com domains + localhost dev (see [live/03-deployment.md](../live/03-deployment.md)).
+
+Cloudflare tunnel fronts the public sites (`edentechapps` / `mondokhealth` tunnel), handling SSL termination. No Let's Encrypt on Dokku.
 
 ---
 
-## Request: anatomy of a page load
+## Request: anatomy of the scoreboard
+
+The `/scoreboard` page is the most multi-service read path in the system. It pulls authoritative game data from Rails and merges a live overlay from `riseballs-live` on the client:
+
+```mermaid
+sequenceDiagram
+    participant User as Browser
+    participant Rails
+    participant Live as riseballs-live
+    participant DB as Postgres
+    participant Ext as NCAA + ESPN
+
+    par in parallel
+        User->>Rails: GET /api/scoreboard?date=YYYY-MM-DD
+        Rails->>DB: Game + team_games + team metadata
+        Rails-->>User: games[] incl. gameID="rb_<id>",<br/>ncaaContestId, gameNumber
+    and
+        User->>Live: GET live.riseballs.com/scoreboard?date=
+        Live->>Live: Caffeine cache: fresh 30s / stale 5m / neg 10s
+        alt cache miss
+            Live->>Ext: NCAA D1+D2 + ESPN in parallel<br/>12s joint timeout
+            Ext-->>Live: raw feeds
+            Live->>Live: SlugResolver + ScoreboardReconciler
+        end
+        Live-->>User: events[] incl. ncaaContestId, homeSlug, awaySlug,<br/>state, scores, currentInning
+    end
+    User->>User: lib/liveOverlay.js merges by<br/>ncaaContestId → (slug pair, gameNumber) → reversed
+```
+
+The merge rules are documented in [reference/matching-and-fallbacks.md](../reference/matching-and-fallbacks.md). The overlay only overrides scores/state on non-final games; finals always win from Rails.
+
+## Request: anatomy of a game page
 
 Tracing a user viewing a game page (`/games/:id`):
 
@@ -154,5 +191,6 @@ Every 15 minutes the pipeline re-runs. Daily at ~3 AM the reconciliation jobs go
 
 - [architecture/01-service-boundaries.md](01-service-boundaries.md) — the "who writes what" table in detail
 - [architecture/02-data-flow.md](02-data-flow.md) — full end-to-end journey of a game record, cradle to screen
+- [live/](../live/) — the stateless `riseballs-live` overlay service
 - [pipelines/](../pipelines/) — one doc per major pipeline
 - [reference/glossary.md](../reference/glossary.md) — vocabulary (Shell, Locked, quality gate, etc.)

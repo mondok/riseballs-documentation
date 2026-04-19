@@ -20,7 +20,7 @@ are the glue between raw ingestion output and the shared scoreboard.
   - [`ensure_game_team_link`](#ensure_game_team_link)
 - [MatchingService (`app/services/matching_service.rb`)](#matchingservice)
 - [TeamMatcher (`app/services/team_matcher.rb`)](#teammatcher)
-- [GameIdentityService (`app/services/game_identity_service.rb`)](#gameidentityservice)
+- [~~GameIdentityService~~ — DELETED 2026-04-19](#gameidentityservice)
 - [ScheduleRecoveryService (`app/services/schedule_recovery_service.rb`)](#schedulerecoveryservice)
 - [SeriesGuardService (`app/services/series_guard_service.rb`)](#seriesguardservice)
 - [Read-path services](#read-path-services)
@@ -39,7 +39,8 @@ Four different "matcher" concepts live side by side. They do NOT do the same job
 | `TeamGameMatcher`    | Which shared `Game` does this team's `TeamGame` row belong to?    | `TeamGame` rows     | `Game` rows, linked       |
 | `MatchingService`    | Does this boxscore's player list actually belong to this Game?    | Game + boxscore     | `{valid:, swapped:, ...}` |
 | `TeamMatcher`        | Which `Team` corresponds to this free-text school name?           | Raw name string     | `Team` or `nil`           |
-| `GameIdentityService`| Attach a StatBroadcast event ID to a Game (de-dup safe).          | Game + sb event id  | side effect (updates row) |
+
+A fourth entry, `GameIdentityService` ("attach a StatBroadcast event id to a Game"), used to live here. It was deleted 2026-04-19 along with the StatBroadcast / SidearmStats live-stats machinery. See the stub below.
 
 ---
 
@@ -62,8 +63,10 @@ The service runs under a **shell model**:
    `scheduled`, no scores, home/away slugs filled, linked to both teams'
    `team_games` via `game_id`.
 2. As each team goes `final`, we *update the existing shell in place* with
-   scores instead of creating a new Game. This preserves `sb_event_id`,
+   scores instead of creating a new Game. This preserves `ncaa_contest_id`,
    `ncaa_game_id`, and every other external identity attached to the shell.
+   (Historically `sb_event_id` was also in this list; that column was
+   dropped 2026-04-19 along with the StatBroadcast machinery.)
 3. Only in one narrow case do we create a NEW Game in `match_all`: when a
    final has `opponent_slug` blank (opponent not in our DB, e.g. exhibitions
    vs. D3 or junior-college teams).
@@ -350,27 +353,9 @@ caching is on the caller.
 
 ---
 
-## GameIdentityService
+## GameIdentityService — **DELETED**
 
-**File:** `app/services/game_identity_service.rb` (15 LOC)
-**Purpose:** Safely attach an external identity (currently only
-StatBroadcast event IDs) to an existing `Game` row.
-
-```ruby
-GameIdentityService.link_sb_id(game, sb_id)
-```
-
-Guards:
-
-- Blank `sb_id` → no-op.
-- `game.sb_event_id` already equals this sb_id → no-op (idempotent).
-- Another `Game` already holds this sb_id → skip (don't double-claim).
-- `ActiveRecord::RecordNotUnique` race → rescued and swallowed (another
-  worker claimed it first).
-
-Called from `StatBroadcastService.link_discovered_events` (line 198) after
-`discover_active_events` finds live SB games and matches them to `Game`
-records by team name + date.
+**File:** `app/services/game_identity_service.rb` — **removed** 2026-04-19 (mondok/riseballs#85 part 1). Its one job was attaching `sb_event_id` to Game rows safely during StatBroadcast event discovery. With `StatBroadcastService` deleted and the `sb_event_id` column dropped from `games` and `game_team_links`, there is no remaining caller for this service.
 
 ---
 
@@ -476,21 +461,18 @@ Methods:
 | `build_game_from_record(game)`                               | Synthesize a contest-shaped hash from an internal Game (used for `rb_` IDs with no NCAA data). Includes home/away, scores, `isWinner`. |
 | `build_game_from_scoreboard(game_or_id)`                     | Pull from `CachedGame.fetch(..., "game")`.                                                                                             |
 | `enrich_show_data(data)`                                     | Add `conference` for each team; patch scores from `athl_boxscore` when NCAA returns blank/zero; merge athletics linescores when NCAA has none. |
-| `find_live_stats(game_id, contest, seo_names)`               | Thread-fanout across each team's cached schedule; collect `live_stats_url`, per-role SB feeds. Up to N parallel threads.               |
-| `enrich_show_from_sb(data, live_stats_url, sb_id:)`          | When scores still blank and start passed, fetch live from StatBroadcast, patch scores/state/linescore/inning.                          |
 | `extract_last_play(pbp)`                                     | Walk periods → playbyplayStats → plays in reverse, return the last non-blank play text.                                                |
 | `patch_from_game_record(data, game_record)`                  | Last-resort score/state patch from our own Game row when all external sources failed.                                                  |
 | `patch_scores_from_boxscore_fetch(data, game_id, seo_names)` | If scores still blank and game started, try athletics scraper, then AI web search as last resort.                                      |
 
 Internal helpers (`private_class_method`):
 
-- `patch_show_scores` (line 292) — merge runs from an `athl_boxscore` or
+- `patch_show_scores` — merge runs from an `athl_boxscore` or
   `boxscore` cache entry into the `teams` array, with linescore + final-state
   inference from `bs_innings` count and score margin (rule: game is final if
   `innings >= 7` OR `innings >= 5 AND |margin| >= 8` — run-rule).
-- `patch_linescore_from_sb` (line 363) — translate the StatBroadcast
-  linescore shape into the contest shape (`period`, `visit`, `home` + R/H/E
-  trailers).
+
+**Removed 2026-04-19:** `find_live_stats`, `enrich_show_from_sb`, and `patch_linescore_from_sb` — all supported the StatBroadcast live-stats patching path and were deleted with the StatBroadcast / SidearmStats services. Live-score patching on the read path is no longer Rails's job; the overlay is a separate cross-origin browser fetch against `riseballs-live`.
 
 ### TodayGamesService
 
@@ -516,8 +498,9 @@ Three entrypoints:
 | `GamePipelineJob` (step 2)           | `TeamGameMatcher.match_all`                  |
 | `BoxscoreFetchService` (before/after)| `MatchingService.validate`                   |
 | Anywhere resolving a school name     | `TeamMatcher.find_by_name`                   |
-| `StatBroadcastService.link_discovered_events` | `GameIdentityService.link_sb_id`    |
 | `StuckScheduleRecoveryJob`           | `ScheduleRecoveryService.call`               |
 | `lib/tasks/fill_missing_boxscores.rake:89` | `SeriesGuardService.safe_to_cancel?`   |
 | `api/games_controller.rb`            | `GameShowService.*`                          |
 | `TodayGamesService.refresh_today_teams` | `ScheduleService.trigger_background_refresh` |
+
+The former `StatBroadcastService.link_discovered_events` → `GameIdentityService.link_sb_id` edge is gone — both classes were deleted 2026-04-19.

@@ -19,7 +19,9 @@ third-party APIs, and hand structured JSON off to `GameStatsExtractor` /
 - [Athletics / Sidearm Sources](#athletics--sidearm-sources)
   - [AthleticsBoxScoreService](#athleticsboxscoreservice)
   - [SidearmHelper (concern)](#sidearmhelper-concern)
-  - [SidearmStatsService](#sidearmstatsservice)
+  - [~~SidearmStatsService~~ — DELETED 2026-04-19](#sidearmstatsservice--deleted)
+  - [~~StatBroadcastService~~ — DELETED 2026-04-19](#statbroadcastservice--deleted)
+  - [~~GameIdentityService~~ — DELETED 2026-04-19](#gameidentityservice--deleted)
 - [WMT / Learfield Source](#wmt--learfield-source)
 - [Cloudflare Playwright (Legacy Fallback)](#cloudflare-playwright-legacy-fallback)
 - [AI Extraction](#ai-extraction)
@@ -29,9 +31,9 @@ third-party APIs, and hand structured JSON off to `GameStatsExtractor` /
   - [AiScheduleService](#aischeduleservice)
 - [Schedule Services](#schedule-services)
   - [ScheduleService](#scheduleservice)
-  - [NcaaScheduleService](#ncaascheduleservice)
-  - [NcaaScoreboardService](#ncaascoreboardservice)
-  - [EspnScoreboardService — DEAD CODE](#espnscoreboardservice--dead-code-tests-only)
+  - [~~NcaaScheduleService~~ — DELETED 2026-04-19](#ncaascheduleservice--deleted)
+  - [~~NcaaScoreboardService~~ — DELETED 2026-04-19](#ncaascoreboardservice--deleted)
+  - [EspnScoreboardService — DELETED](#espnscoreboardservice--deleted)
   - [CloudflareScheduleService (Legacy Fallback)](#cloudflarescheduleservice-legacy-fallback)
 - [URL Discovery](#url-discovery)
 - [Roster Ingestion](#roster-ingestion)
@@ -238,23 +240,17 @@ Class methods:
 - `sidearm_find_box_score_url(team, opponent_slugs)` — returns the first URL
   from Strategy 1 or 2.
 
-### SidearmStatsService
+### SidearmStatsService — **DELETED**
 
-**File:** `app/services/sidearm_stats_service.rb`
+**File:** `app/services/sidearm_stats_service.rb` — **removed** 2026-04-19 (mondok/riseballs#85 part 1, PR #90). All callers (`Api::LiveStatsController#sidearm_batch`, the `Scoreboard.jsx` 10s `fetchLiveStats` poller, Live View page machinery) were removed with it. Live-score overlay now comes from the `riseballs-live` service.
 
-Consumes the `sidearmstats.com` live feed JSON (also known as `livestats`) to
-drive real-time game views.
+### StatBroadcastService — **DELETED**
 
-- `.fetch_live(feed_url)` → normalized hash with `home_name`, `visitor_name`,
-  `home_score`, `visitor_score`, `inning`, `top_bottom`, `outs`, `balls`,
-  `strikes`, `linescore`, `at_bat`, `on_mound`. Returns `nil` on failure.
-- `.fetch_live_batch(feed_urls)` — parallel (Thread per URL), caps at 12.
-- `.fetch_and_merge(feeds, home_name:)` — given `{ "home" => url, "away" => url }`,
-  fetches both in parallel and merges the away team's own perspective
-  (their `HomeTeam` is our visitor) into the home feed. Also merges linescores.
+**File:** `app/services/stat_broadcast_service.rb` — **removed** 2026-04-19 (mondok/riseballs#85 part 1). Wrapped the StatBroadcast live feeds (`fetch_live_batch`, `fetch_print_boxscore_batch`, `resolve_monitor_url`). Replaced by the `riseballs-live` overlay.
 
-Context parser `parse_context` extracts balls/strikes/outs from the
-`"1 Ball 2 Strike 1 Out"` string Sidearm emits in `Context`.
+### GameIdentityService — **DELETED**
+
+**File:** `app/services/game_identity_service.rb` — **removed** 2026-04-19 (mondok/riseballs#85 part 1). Coordinated StatBroadcast event id discovery / `sb_event_id` backfill. With the `sb_event_id` column dropped from `games` and `game_team_links`, this service has no role.
 
 ---
 
@@ -401,8 +397,9 @@ asks OpenAI for ONLY **pitching** data. Used by `PitcherEnrichmentService`
 (owned by another agent) to backfill pitcher decisions/IP when the primary
 sources don't include them.
 
-- `.fetch_pitchers(game_id, seo_slugs)` → normalized hash compatible with
-  `StatBroadcastService.fetch_pitchers` output:
+- `.fetch_pitchers(game_id, seo_slugs)` → normalized hash in the legacy
+  pitcher-rows shape (historically matched `StatBroadcastService.fetch_pitchers` output,
+  which was deleted 2026-04-19):
   `{ home_name:, visitor_name:, home: [...], visitor: [...] }`.
 
 Model: `gpt-5.4-nano`. Prompts: system message with strict rules (decision must
@@ -493,16 +490,14 @@ class-level `Mutex`.
     blocks. Uses `data-game-id` as the deterministic identity, CSS class
     `sidearm-schedule-home-game` for home/away, opponent logo `alt` attr
     for team name, `sidearm-schedule-game-result` for "W, 5-2" parsing.
-- Output shape per game:
+- Output shape per game (as of 2026-04-19):
   `{ game_id:, sidearm_game_id:, date: "MM/DD/YYYY", start_time:,
     opponent_name:, opponent_seo:, is_home:, team_score:, opponent_score:,
     result: 'W'|'L'|'T'|nil, state: 'pre'|'final', current_period:,
-    final_message:, live_stats_url:, live_stats_feed_url: }`
+    final_message: }`
+  Historically this hash also carried `live_stats_url:` and `live_stats_feed_url:` keys; those were removed in mondok/riseballs#85 part 1 along with the orphan `extract_live_stats_from_html` helper.
 
 #### Helper methods (private)
-
-- `extract_live_stats_from_html(html)` — returns `[map, sidearmstats_game_ids]`
-  keyed by a normalized `"feb 17|opponent"` string.
 - `extract_scores_from_html(html)` — same key format, returns per-game
   `{ result:, team_score:, opponent_score: }`.
 - `backfill_opponent_seos(games, own_slug)` — builds a `name -> slug` lookup
@@ -512,14 +507,13 @@ class-level `Mutex`.
   live games and overlays `game_id`, `state`, `current_period`, `result`,
   scores. Matches by opponent name vs known Team names/nickname/slug words.
 
-### NcaaScheduleService
+### NcaaScheduleService — **DELETED**
 
-**File:** `app/services/ncaa_schedule_service.rb`
+**File:** `app/services/ncaa_schedule_service.rb` — **removed** 2026-04-19 (mondok/riseballs Phase 0 commit `42b585a`). The Ruby GraphQL client was replaced by the Java scraper's `NcaaApiClient` (see [scraper/02-services.md](../scraper/02-services.md)) which hits the same `https://sdataprod.ncaa.com` persisted-query hash. NCAA ingestion on the Ruby side now runs entirely through `NcaaGameDiscoveryJob` (re-enabled as of mondok/riseballs#82, `*/20` cadence + nightly season sweep).
 
-GraphQL client for NCAA.com's game feed. Enriches existing Game records with
-contest IDs, epoch times, scores, and state. **Does not create new games** by
-default — but will call `JavaScraperClient.find_or_create_game` as a creation
-gate for contests not yet in the DB.
+The old class also lives on conceptually inside `riseballs-live/src/main/java/com/riseballs/live/client/NcaaScoreboardClient.java`, which calls the same NCAA API (persisted query hash `6b26e5cda954c1302873c52835bfd223e169e2068b12511e92b3ef29fac779c2`) for transient overlay data.
+
+**For historical reference only**, the deleted service had the following shape:
 
 - `.games_for_date(date, division: "d1")` → array of contest hashes.
 - `.sync_date(date, division: "d1")` → `{ created:, enriched: }`.
@@ -533,7 +527,7 @@ Key endpoints / constants:
 - `SEASON_YEAR = 2025` — note: NCAA's academic year encoding.
 - `SEONAME_MAP` — known mismatches between NCAA seonames and `Team.slug`
   (`mcneese` → `mcneese-st`, `uiw` → `incarnate-word`,
-  `tex-am-commerce` → `east-tex-am`).
+  `tex-am-commerce` → `east-tex-am`). Note: the Ruby `east-tex-am` mapping has been superseded on the Rails side — the canonical slug is now `east-texas-am` everywhere except inside the deleted Ruby class described here. The Java scraper's `NcaaApiClient.SEONAME_MAP` still uses `east-tex-am` (see [scraper/02-services.md](../scraper/02-services.md)); that's a separate map.
 
 #### `find_existing_game` matcher
 
@@ -556,12 +550,11 @@ dedupe:
 - If only one startTime bucket, keeps the top 2 by contest ID.
 - If multiple time slots, keeps the highest contest ID per slot.
 
-### NcaaScoreboardService
+### NcaaScoreboardService — **DELETED**
 
-**File:** `app/services/ncaa_scoreboard_service.rb`
+**File:** `app/services/ncaa_scoreboard_service.rb` — **removed** 2026-04-19 (Phase 0 commit `42b585a`, same sweep as `NcaaScheduleService`). Historically used by `GameSyncJob` for live-score syncing. Live NCAA data now comes from `riseballs-live`'s `NcaaScoreboardClient`, which reconciles NCAA + ESPN in-process. Ruby-side NCAA discovery/backfill runs through `NcaaGameDiscoveryJob` (re-enabled 2026-04-19 per mondok/riseballs#82).
 
-Similar API to `NcaaScheduleService` but geared at score syncing rather than
-creation. Called by `GameSyncJob` for live scores.
+**For historical reference only**, the deleted service had the following shape:
 
 - `.contests_for_date(date, division:)` → raw contest array.
 - `.sync_date(date)` → iterates D1 + D2. `{ created:, updated:, skipped: }`.
@@ -585,20 +578,9 @@ Key behaviors:
   contest_id over. Has an early-out if `game.ncaa_contest_id == contest_id.to_s`
   to prevent swap loops between runs.
 
-### EspnScoreboardService — **DEAD CODE (tests-only)**
+### EspnScoreboardService — **DELETED**
 
-**File:** `app/services/espn_scoreboard_service.rb`
-
-> **⚠️ This service has zero production callers.** Verified 2026-04-19: the only references to `EspnScoreboardService` or `sync_scores` anywhere in the app, jobs, rake tasks, lib, config, or initializers are the service file itself plus its own test file (`test/services/espn_scoreboard_service_test.rb`). The Java scraper also contains zero ESPN references. The scoreboard fetch path production uses `NcaaScoreboardService` exclusively.
->
-> The code is kept because (a) the tests still pass, and (b) if NCAA's API ever goes down we'd want ESPN as a fallback. But as of this writing **it is not called from any runtime path** — do not cite it in pipeline docs without that caveat.
-
-If ever re-introduced, the shape is:
-
-- Base URL: `https://site.api.espn.com/apis/site/v2/sports/baseball/college-softball/scoreboard?dates=YYYYMMDD&limit=200`
-- `ESPN_SLUG_OVERRIDES` — static map of ESPN team location strings to our `Team` slugs (lines 5-166). Also covers `State` → `St.` normalization and slugify-with-`state`-to-`st` variants.
-- `espn_status_to_state`: `STATUS_FINAL` → `final`, `STATUS_IN_PROGRESS` → `live`, anything else → `scheduled`. Only `final` / `live` events would update scores.
-- Only UPDATES existing games (home/away scores + state) — never creates. Skips ambiguous doubleheaders where multiple eligible games exist between the same teams on the same date.
+Previously lived at `app/services/espn_scoreboard_service.rb`. Removed in Phase 8 of the riseballs-live rollout (mondok/riseballs-live#1). ESPN scoreboard ingestion now happens out-of-process in the standalone Java service at `live.riseballs.com` (`riseballs-live` repo), which fetches both NCAA and ESPN feeds, reconciles them, and is consumed directly by the frontend. The Rails side is no longer the home for any ESPN client code.
 
 ---
 
