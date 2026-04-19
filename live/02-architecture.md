@@ -113,8 +113,8 @@ Returns a list of `EspnEvent` DTOs. Each event goes through `SlugResolver` to ma
 
 `client/SlugResolver.java`. The only piece of this service that needs team-knowledge. Unlike the Rails `TeamMatcher` or the Java scraper's `OpponentResolver`, it has no database. At startup it loads two classpath resources:
 
-- `src/main/resources/espn_slug_overrides.json` — 163 entries. A compile-time copy of the Ruby `ESPN_SLUG_OVERRIDES` hash plus three reviewer-added entries (Florida Atlantic, Sam Houston, San Jose State accent handling). Hand-maintained; entries survive between releases.
-- `src/main/resources/known_slugs.txt` — 594 entries. All D1 + D2 slugs the system knows about.
+- `src/main/resources/espn_slug_overrides.json` — 163 entries. Originally a one-shot snapshot of the Ruby `ESPN_SLUG_OVERRIDES` hash that lived on `EspnScoreboardService` before that service was deleted on 2026-04-19 (mondok/riseballs#84). Plus three reviewer-added entries from the initial riseballs-live rollout: Florida Atlantic, Sam Houston, San Jose State with accent. Hand-maintained; entries survive between releases. This JSON file is now the single canonical home for ESPN-location-to-slug overrides — there is no equivalent in the Rails repo anymore.
+- `src/main/resources/known_slugs.txt` — 594 entries. One-shot export from `Team.pluck(:slug)` in Rails.
 
 Resolution algorithm:
 
@@ -122,7 +122,7 @@ Resolution algorithm:
 2. Otherwise lowercase-collapse the ESPN slug form (often already the desired slug) and check if it's in `known_slugs.txt`. Return it if so.
 3. Otherwise return a special `UNKNOWN` marker — the reconciler drops events whose either side is UNKNOWN so we don't publish garbage.
 
-**Duplication note:** this is intentional prison-safe duplication with Rails. If ESPN adds a new team slug that doesn't match our form, both the Ruby side (where applicable — the Ruby `ESPN_SLUG_OVERRIDES` map lives in the riseballs repo even though the service that consumed it was deleted; it may survive in tests or related tasks) AND this classpath resource need to be updated, rebuilt, and deployed.
+**Update workflow:** new ESPN team? Add the override to `espn_slug_overrides.json` here, rebuild, redeploy. The Rails repo no longer holds a mirror of this map, so there's only one place to change. When a team's canonical Rails slug changes, re-export `known_slugs.txt` from `Team.pluck(:slug).sort.uniq` and commit the new file.
 
 ### ScoreboardReconciler
 

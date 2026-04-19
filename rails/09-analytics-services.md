@@ -16,7 +16,7 @@ and print boxscores into the pipeline.
   - [`parse_decision` — W/L/S normalization](#parse_decision--wls-normalization)
   - [`upsert_player_stat` — abbreviation-aware merge](#upsert_player_stat--abbreviation-aware-merge)
   - [`distribute_team_batting_breakdowns` — team-level HR/2B/3B/SB/HBP fan-out](#distribute_team_batting_breakdowns--team-level-hr2b3bsbhbp-fan-out)
-  - [~~`enrich_with_sb_pitchers`~~ — StatBroadcast pitcher overlay (DELETED 2026-04-19)](#enrich_with_sb_pitchers--statbroadcast-pitcher-overlay)
+  - [`enrich_with_sb_pitchers` — pitcher overlay (upstream changed 2026-04-19)](#enrich_with_sb_pitchers--pitcher-overlay)
   - [`snapshot` — progression tracking](#snapshot--progression-tracking)
 - [PitcherEnrichmentService (`app/services/pitcher_enrichment_service.rb`)](#pitcherenrichmentservice)
 - [PlayerStatsCalculator (`app/services/player_stats_calculator.rb`)](#playerstatscalculator)
@@ -243,15 +243,23 @@ non-zero — athletics/SB data wins. For XBH columns, validate that the
 new total wouldn't push `(doubles + triples + home_runs) > hits` before
 writing.
 
-### `enrich_with_sb_pitchers` — StatBroadcast pitcher overlay
+### `enrich_with_sb_pitchers` — pitcher overlay
 
-Lines 583-649. Takes the SB pitchers payload (home/visitor arrays with
+Lines 583-649. Takes a pitchers payload (home/visitor arrays with
 ip/h/r/er/bb/k/hr/hp/bf/tp/st/dec) and `assign_attributes` onto existing
 PlayerGameStat rows (or create new) keyed by `(ncaa_game_id, team_seo_slug,
 player_name)`.
 
-SB is the authoritative source for `pitch_count` (`tp`), `strikes` (`st`),
-and `decision`. `data_source: "sb"` marks the row.
+The payload format is named `sb_pitchers` for historical reasons. The
+original producer was `StatBroadcastService`, which was deleted on
+2026-04-19 as part of mondok/riseballs#85. The consumer path
+(`GameStatsExtractor#enrich_with_sb_pitchers`, the `sb_pitchers` cache
+type on `CachedGame`, and the `Api::GamesController#show` fetch that
+merges cached pitchers into the response) is still live. The data now
+comes from `AiBoxScoreService.fetch_pitchers`, which normalizes its
+LLM output into the same payload shape. Any row enriched this way is
+marked `data_source: "sb"` - also historical - treat it as "post-
+extraction pitcher overlay" rather than literally StatBroadcast.
 
 ### `snapshot` — progression tracking
 
@@ -497,4 +505,4 @@ The graph is scoped by `division`, so OWP/OOWP never leak across D1 and D2.
 
 Replacement: the `riseballs-live` service ([live/00-overview.md](../live/00-overview.md)) handles live-score ingestion via NCAA + ESPN feeds. It does NOT replace the historical StatBroadcast write-path into `cached_games` / `player_game_stats` — live-overlay data is transient and the browser consumes it directly.
 
-The `enrich_with_sb_pitchers` method on `GameStatsExtractor` is retained as a code path but its only input used to come from `StatBroadcastService.fetch_pitchers`; that feed is gone. In practice the path is now dead code inside a still-present method signature. AI-based pitcher enrichment (`AiBoxScoreService.fetch_pitchers`) continues to backfill decisions and pitch counts when present.
+The `enrich_with_sb_pitchers` method on `GameStatsExtractor` is still live. Its upstream source changed: `StatBroadcastService.fetch_pitchers` is gone, and `AiBoxScoreService.fetch_pitchers` now emits the same `sb_pitchers` payload shape to drive the same enrichment path. The `sb_pitchers` cache type on `CachedGame` and the `data_source: "sb"` marker on enriched `player_game_stats` rows are historical names - read them as "post-extraction pitcher overlay" rather than literal StatBroadcast data.
