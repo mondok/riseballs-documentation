@@ -21,6 +21,7 @@ The live service has zero DB access so it cannot consult `team_aliases`. There i
 
 | Step | Rails `TeamMatcher` (`app/services/team_matcher.rb`) | Java `OpponentResolver` (`reconciliation/schedule/OpponentResolver.java`) |
 |------|-----------------------------------------------------|---------------------------------------------------------------------------|
+| 0 | — | **Opponent URL host match** — only via the two-arg `resolve(name, url)` overload. Strict host-only equality against `Team.athleticsUrl`. Falls through silently on null/blank/unparseable URL or unknown host. |
 | 1 | `TeamAlias.find_by(alias_name: normalized)` | `TeamAliasRepository.findByAlias(name)` |
 | 2 | Exact slug match (`teams.slug = name`) | Exact slug match |
 | 3 | `Team.name` / `Team.longName` case-insensitive exact | Parenthetical-suffix stripping: `"Lee University (Tenn.)"` → `"Lee University"` → name/longName lookup |
@@ -32,6 +33,20 @@ The live service has zero DB access so it cannot consult `team_aliases`. There i
 **Only the Java resolver does state-abbreviation handling.** Rails doesn't — when Rails has a state-abbreviation issue (historical), it's fixed by adding a `TeamAlias` row.
 
 **Only the Rails matcher does fuzzy/trigram matching.** Java is strictly rule-based (intentional — determinism over coverage for reconciliation).
+
+### Step 0: URL-based disambiguation (issue #97, 2026-04-20)
+
+Some aliases are legitimate 99.9% of the time but wrong in narrow edge cases. Bare `"UNC"` is the canonical example: North Carolina owns that alias in `team_aliases`, but Nevada's Sidearm schedule page lists Northern Colorado as `"UNC"` — producing a phantom "Nevada vs North Carolina" scheduled game on the real-life Nevada vs Northern Colorado date.
+
+The fix is additive. `SidearmScheduleParser.parseCard` extracts the opponent-link `href` (e.g. `http://www.uncbears.com/`) alongside the display text. `OpponentResolver` builds a `hostToSlug` map from every team's `athleticsUrl` at construction and tries that map first when the caller has a URL. If the host matches a known athletics domain, the URL-resolved slug wins; otherwise the resolver falls through to the name-based ladder below, unchanged.
+
+**Hard invariant:** the URL path can only improve outcomes, never regress them. Removing the URL path would restore the name-only behavior bit-for-bit.
+
+**Who calls the two-arg form:** every caller that processes a `ScheduleEntry` from the scraper parsers — `TeamScheduleSyncService.buildTeamGame`, `ScheduleReconciliationOrchestrator.reconcileTeam`, `ScheduleComparisonEngine.resolveOpponent`, `ScheduleVerificationController`, `NcaaDateReconciliationService`. Non-`ScheduleEntry` callers (`NcaaContestCandidateResolver` with NCAA seoname, `StandingsOrchestrator` with standings entries) stay on the single-arg path since they have no URL context.
+
+**Who populates `opponentUrl`:** only `SidearmScheduleParser.parseCard` today. Presto, WMT, and WordPress parsers pass `null` — they can be upgraded once their source formats are confirmed to carry opponent-link hrefs. Because the URL path is strictly additive, a `null` URL is equivalent to the pre-#97 behavior.
+
+**Audit baseline (2026-04-20):** 594/594 teams have unique normalized hosts across the `Team.athleticsUrl` column — host equality is unambiguous by construction. Re-run the audit in `how_things_work.md` before relaxing the strict host-only rule.
 
 ---
 

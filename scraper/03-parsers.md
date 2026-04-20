@@ -135,20 +135,27 @@ Companion regression: `tampaScheduleDoesNotDuplicateNextEventBanner` asserts exa
 
 ## `OpponentResolver` — name → slug resolution
 
-**File:** `reconciliation/schedule/OpponentResolver.java` (385 LOC). This is the heart of schedule-first reconciliation. Every service that resolves a scraped opponent name (schedule sync, reconciliation, standings, roster) depends on it.
+**File:** `reconciliation/schedule/OpponentResolver.java` (~450 LOC). This is the heart of schedule-first reconciliation. Every service that resolves a scraped opponent name (schedule sync, reconciliation, standings, roster) depends on it.
+
+**Two entry points:**
+- `resolve(String name)` — name-only. Used by callers that never see a URL: `NcaaContestCandidateResolver` (NCAA seoname), `StandingsOrchestrator` (standings entries).
+- `resolve(String name, String opponentUrl)` — two-arg overload added for issue #97. Used by every caller that processes a `ScheduleEntry`: `TeamScheduleSyncService`, `ScheduleReconciliationOrchestrator`, `ScheduleComparisonEngine`, `ScheduleVerificationController`, `NcaaDateReconciliationService`. When `opponentUrl` is non-null and its normalized host matches a known `Team.athleticsUrl` host, the URL-resolved slug wins. Otherwise the two-arg form falls through to the single-arg name ladder, unchanged.
 
 **Preloaded state (constructor):**
 - `List<Team> allTeams` — entire teams table in memory.
 - `Map<String, String> aliasLookup` — every `TeamAlias` row (`aliasName.lowercase().trim()` → `teamSlug`).
-- `ConcurrentHashMap<String, String> cache` — per-instance memoization; `NULL_SENTINEL` value for "we looked this up and it failed" to prevent re-querying failed names.
+- `Map<String, String> hostToSlug` — every non-blank `Team.athleticsUrl`, normalized host (lowercased, `www.` stripped, port/path/query discarded) → `teamSlug`. 594/594 hosts unique as of 2026-04-20.
+- `ConcurrentHashMap<String, String> cache` — per-instance memoization keyed on name only; `NULL_SENTINEL` value for "we looked this up and it failed" to prevent re-querying failed names. **The URL path is not cached** — it runs before the name cache and returns directly on hit, so the name cache is untouched and the URL lookup itself is an O(1) hashmap get.
 
 **Resolution chain (order matters — highest priority first):**
 
 ```mermaid
 flowchart TD
-    Start["opponentName (raw)"] --> StripRank["strip ranking prefix<br/>(No. 5 / #23 / (3) / leading digits)"]
+    Start["resolve(name, url)"] --> UrlCheck{"url non-null<br/>and host known?"}
+    UrlCheck -->|yes| Done["return hostToSlug[host]"]
+    UrlCheck -->|no / fall through| StripRank["strip ranking prefix<br/>(No. 5 / #23 / (3) / leading digits)"]
     StripRank --> Alias["0. TeamAliasRepository<br/>(exact lowercase match)"]
-    Alias -->|hit| Done["return slug"]
+    Alias -->|hit| Done
     Alias -->|miss| Slug["1. slugify() →<br/>findBySlug"]
     Slug -->|hit| Done
     Slug -->|miss| Parens{"has '( … )' suffix?"}
@@ -172,7 +179,9 @@ flowchart TD
 
 **Step details:**
 
-0. **`aliasLookup.get(cleaned.toLowerCase().trim())`** — highest priority. Rails admins add rows to `team_aliases` for known mappings (e.g., "Mississippi State" → `mississippi-st`).
+-1. **URL host lookup** (two-arg `resolve(name, url)` only). `extractHost(url)` normalizes to a bare host: lowercased, scheme added if missing (so parsing succeeds), leading `www.` stripped, port discarded, path/query/fragment ignored. On hit in `hostToSlug`, return the slug immediately and skip everything else. On miss — null/blank/unparseable URL or unknown host — fall through to the name path below. Strict host-only equality; never fuzzy. Used to disambiguate names like bare `"UNC"` (alias table → `north-carolina`) when the Sidearm opponent link actually points to `uncbears.com` → `northern-colo`. See issue #97.
+
+0. **`aliasLookup.get(cleaned.toLowerCase().trim())`** — highest priority for the name path. Rails admins add rows to `team_aliases` for known mappings (e.g., "Mississippi State" → `mississippi-st`).
 
 1. **Exact slug** — `slugify()` lowercases, normalizes parenthetical (`King (TN)` → `king-tn`), strips periods, replaces non-alphanumerics with hyphens, trims trailing hyphens. Then `teamRepository.findBySlug(slug)`.
 
@@ -198,6 +207,7 @@ These cannot be resolved globally — any alias would break some call site. The 
 - `static String abbreviate(String)` — `State → St`, `St. → St`.
 - `static String expandStateAbbreviations(String)` — one-way expand.
 - `static String contractStateNames(String)` — one-way contract.
+- `static String extractHost(String)` — URL → bare host (null on any parse failure). Used by step -1 and directly in tests.
 
 ---
 
