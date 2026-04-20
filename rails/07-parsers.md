@@ -681,3 +681,13 @@ Some sites render the position inline in the name column:
 `PrestoSportsParser` defines `POSITION_PATTERN` with the full set of softball
 positions including split-position slashes (`"c/1b"`) and strips the match
 from the name.
+
+---
+
+## Related docs
+
+- [06-ingestion-services.md](06-ingestion-services.md) — services that invoke these parsers on raw HTML/JSON
+- [../pipelines/03-boxscore-pipeline.md](../pipelines/03-boxscore-pipeline.md) — end-to-end boxscore ingest that consumes parser output
+- [../pipelines/02-pbp-pipeline.md](../pipelines/02-pbp-pipeline.md) — play-by-play pipeline and quality gate
+- [../reference/glossary.md](../reference/glossary.md) — quality gate, PBP, boxscore terms used throughout
+- [08-matching-services.md](08-matching-services.md) — `MatchingService` validates parsed rosters against Games

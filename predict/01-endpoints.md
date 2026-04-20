@@ -359,3 +359,12 @@ Runs on every request:
 | _(not wired)_ | `GET /v1/metrics` | Ops |
 
 Rails controller behavior (per caller's brief): returns **204** for any played game (never calls predict), **503** if predict times out or errors. Predict timeout is 5s (`PREDICT_SERVICE_TIMEOUT_SECONDS`). Rails adds no caching — the service owns the 5-minute TTL.
+
+## Related docs
+
+- [../pipelines/07-prediction-pipeline.md](../pipelines/07-prediction-pipeline.md) — Rails call sites and end-to-end flow
+- [../rails/11-external-clients.md](../rails/11-external-clients.md) — `PredictServiceClient` implementation
+- [06-schemas.md](06-schemas.md) — pydantic request/response schema definitions
+- [04-explain-engine.md](04-explain-engine.md) — explain-loss, scenarios, keys internals
+- [05-observability.md](05-observability.md) — middleware, metrics registry, cache internals
+- [00-overview.md](00-overview.md) — service overview and app state fields

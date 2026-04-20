@@ -892,3 +892,14 @@ Join table: users ↔ teams they follow.
 
 - `belongs_to :user`, `belongs_to :team`
 - `uniqueness`: `user_id` scoped to `team_id` (message: `"already following this team"`)
+
+---
+
+## Related docs
+
+- [02-database-schema.md](02-database-schema.md) — column-level schema for every model's table
+- [03-entity-relationships.md](03-entity-relationships.md) — cardinality diagrams across these models
+- [../pipelines/01-game-pipeline.md](../pipelines/01-game-pipeline.md) — how `Game` / `TeamGame` / `GameTeamLink` get written
+- [../pipelines/06-reconciliation-pipeline.md](../pipelines/06-reconciliation-pipeline.md) — detectors that enqueue `GameReview` rows
+- [../reference/glossary.md](../reference/glossary.md) — terms like `locked`, `doubleheader`, `data_freshness`
+- [../operations/runbook.md](../operations/runbook.md) — operator procedures touching these models

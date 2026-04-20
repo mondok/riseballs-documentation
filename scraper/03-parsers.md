@@ -243,3 +243,14 @@ Same HTML-structure fallback chain, but label set is different:
 - Social: same CSS patterns as players.
 
 No transfer detection (coaches don't transfer in softball world).
+
+---
+
+## Related docs
+
+- [02-services.md](02-services.md) — orchestrators and fetchers that feed these parsers
+- [04-reconciliation.md](04-reconciliation.md) — schedule parsers driving reconciliation
+- [../reference/slug-and-alias-resolution.md](../reference/slug-and-alias-resolution.md) — full `OpponentResolver` rule ladder
+- [../reference/matching-and-fallbacks.md](../reference/matching-and-fallbacks.md) — how parser output matches to DB games
+- [../pipelines/03-boxscore-pipeline.md](../pipelines/03-boxscore-pipeline.md) — where `SidearmBoxscoreParser` + `WmtResponseParser` run
+- [../pipelines/02-pbp-pipeline.md](../pipelines/02-pbp-pipeline.md) — `PbpParser` in the PBP cascade

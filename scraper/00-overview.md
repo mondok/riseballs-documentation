@@ -162,3 +162,14 @@ All calls are synchronous POSTs with JSON bodies. Rails waits for the HTTP respo
 ## Scheduled work
 
 There are **no `@Scheduled` methods** in this codebase (verified via grep). The Java service is purely reactive — every pipeline runs on HTTP request from Rails. Rails owns all cron scheduling (Sidekiq-cron or equivalent), which is intentional so there's one scheduler to operate.
+
+---
+
+## Related docs
+
+- [01-controllers.md](01-controllers.md) — full REST surface exposed by this service
+- [02-services.md](02-services.md) — orchestrators, fetchers, validators, roster services
+- [../architecture/01-service-boundaries.md](../architecture/01-service-boundaries.md) — what Rails owns vs what Java owns
+- [../pipelines/01-game-pipeline.md](../pipelines/01-game-pipeline.md) — how Rails orchestrates scraper calls end-to-end
+- [../rails/11-external-clients.md](../rails/11-external-clients.md) — `JavaScraperClient`, the Rails side of every call
+- [../operations/runbook.md](../operations/runbook.md) — deploy, restart, debug the scraper in prod

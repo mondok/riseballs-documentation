@@ -258,3 +258,13 @@ Rationale: the StatBroadcast + SidearmStats feeds the page consumed are flaky an
 `/admin/boxscores`, `/admin/reviews`, `/admin/jobs`, `/admin/tools`, and `/sidekiq` are **Rails-rendered views**, not React. They live under `app/views/admin/` and `app/controllers/admin/`, with routes declared in the `namespace :admin do ... end` block of `config/routes.rb`. They are explicitly excluded from the React catch-all via the `constraints: ->(req) { !req.path.start_with?("/admin", ...) }` filter.
 
 Auth pages (`/auth/sign_in`, `/auth/sign_up`, `/auth/sign_out`) are handled by Devise controllers (`auth/sessions`, `auth/registrations`) and invoked by the React client purely as JSON endpoints.
+
+---
+
+## Related docs
+
+- [15-frontend-overview.md](15-frontend-overview.md) — routing, auth, and API client setup
+- [17-frontend-components.md](17-frontend-components.md) — components used across these pages
+- [04-api-endpoints.md](04-api-endpoints.md) — JSON endpoint contracts these pages consume
+- [../pipelines/07-prediction-pipeline.md](../pipelines/07-prediction-pipeline.md) — GameDetail prediction panel source
+- [../architecture/02-data-flow.md](../architecture/02-data-flow.md) — full data journey from scraper to UI

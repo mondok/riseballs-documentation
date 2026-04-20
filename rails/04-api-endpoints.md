@@ -791,3 +791,14 @@ Action: `OgImagesController#team`.
 - **Parameter truncation:** `games#batch` caps batch size at 12 ids defensively. The former `live_stats#*` caps are gone with the controller's deletion.
 - **Predict service env vars:** `PREDICT_SERVICE_URL`, `PREDICT_SERVICE_TIMEOUT_SECONDS` — consumed by `PredictServiceClient` (not the controller).
 - **Negative cache key format:** `pbp_miss:<gid>` in Rails.cache, 5-minute TTL. Set and cleared by `Api::GamesController#play_by_play`.
+
+---
+
+## Related docs
+
+- [05-routes.md](05-routes.md) — the route table backing these controller actions
+- [01-models.md](01-models.md) — model reference for serialized entities (`Game`, `Team`, `Player`)
+- [../pipelines/01-game-pipeline.md](../pipelines/01-game-pipeline.md) — how `/api/games/:id` write-through feeds game state
+- [../pipelines/07-prediction-pipeline.md](../pipelines/07-prediction-pipeline.md) — `/api/predictions` + `/api/games/:id/prediction` flow
+- [../architecture/01-service-boundaries.md](../architecture/01-service-boundaries.md) — where the Rails API sits vs scraper / live / predict
+- [../operations/runbook.md](../operations/runbook.md) — operator procedures when API endpoints misbehave

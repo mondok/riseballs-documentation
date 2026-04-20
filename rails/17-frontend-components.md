@@ -246,3 +246,13 @@ There is no shared spinner or skeleton component. Each page ships its own inline
 - `Dashboard`: custom `<DashboardSkeleton />` with a logo-sized title shimmer and a 6-tile grid.
 
 Error states are similarly hand-rolled per page (a centered card with `text-lg` title + small `text-sm` subtitle). There is no global `<ErrorCard />` wrapper. The only shared error surface is the top-level `<ErrorBoundary>`, which only catches **render-phase** errors — network failures are handled per page.
+
+---
+
+## Related docs
+
+- [16-frontend-pages.md](16-frontend-pages.md) — pages that compose these components
+- [15-frontend-overview.md](15-frontend-overview.md) — provider tree, routing, auth flow
+- [04-api-endpoints.md](04-api-endpoints.md) — endpoints powering GameCard, DiamondView, charts
+- [../pipelines/07-prediction-pipeline.md](../pipelines/07-prediction-pipeline.md) — GamePrediction component payload source
+- [../architecture/02-data-flow.md](../architecture/02-data-flow.md) — end-to-end data flow into the UI

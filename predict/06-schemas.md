@@ -271,3 +271,10 @@ Every write-heavy response carries at least two version fields so Rails can dete
 - `taxonomy_version` — one of `"explain-v1"`, `"scenarios-v1"`, `"keys-v1"` depending on endpoint
 
 Bumping any of these is the contract for adding/removing fields in the corresponding response.
+
+## Related docs
+
+- [01-endpoints.md](01-endpoints.md) — endpoints each schema is bound to
+- [02-feature-engineering.md](02-feature-engineering.md) — source of `feature_schema_version` pin
+- [03-ml-and-artifacts.md](03-ml-and-artifacts.md) — source of `model_version` pin
+- [../rails/11-external-clients.md](../rails/11-external-clients.md) — Ruby consumer of these payloads

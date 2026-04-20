@@ -278,3 +278,10 @@ The client fans out `/v1/matchups/predict` and `/v1/matchups/keys-to-victory` **
 For the narrative — phase-by-phase build history, data-shape gotchas, training baselines, deferred work — see the service's persistent memory file:
 
 `/Users/mattmondok/Code/riseballs-parent/riseballs-predict/how_things_work.md`
+
+## Related docs
+
+- [05-observability.md](05-observability.md) — cache, metrics, logging tunables referenced here
+- [01-endpoints.md](01-endpoints.md) — surfaces the `CORS_ALLOW_ORIGINS` + timeout envs affect
+- [../operations/deployment.md](../operations/deployment.md) — Dokku deploy mechanics for all services
+- [../operations/database-access.md](../operations/database-access.md) — warehouse DSN used by `DATABASE_URL`

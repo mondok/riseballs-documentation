@@ -300,3 +300,14 @@ Rails.
 
 No `RiseballsLiveClient` exists on the Rails side. Adding one would
 breach the "browser calls it directly" contract; don't propose it.
+
+---
+
+## Related docs
+
+- [../pipelines/01-game-pipeline.md](../pipelines/01-game-pipeline.md) — Java scraper drives team-schedule sync and game creation gate
+- [../pipelines/07-prediction-pipeline.md](../pipelines/07-prediction-pipeline.md) — `PredictServiceClient.bundle_for` flow end-to-end
+- [../pipelines/06-reconciliation-pipeline.md](../pipelines/06-reconciliation-pipeline.md) — `reconcile`, `reconcile_ncaa_dates` endpoints in context
+- [../architecture/01-service-boundaries.md](../architecture/01-service-boundaries.md) — who owns what across Rails / scraper / predict / live
+- [12-jobs.md](12-jobs.md) — jobs that call `JavaScraperClient` and their `dokku enter` requirements
+- [../operations/runbook.md](../operations/runbook.md) — debugging `riseballs-scraper.web` unreachable and 503 predict failures

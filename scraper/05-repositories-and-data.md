@@ -208,3 +208,12 @@ Used by reconciliation writers to avoid duplicate pending reviews for the same g
 | `Player.previousSchool` / `isTransfer` write | Ruby `Player#detect_transfer` | `knownCollegeNames` set loaded at startup from `Team.name` + `Team.longName`. |
 
 **Rule of thumb when adding a new Java write:** grep Rails for the model's `before_save`/`after_save` callbacks and validations, then either port them to Java or document why they're unnecessary.
+
+## Related docs
+
+- [02-services.md](02-services.md) — the services that call these repositories
+- [04-reconciliation.md](04-reconciliation.md) — reconciliation writers and their write patterns
+- [../architecture/01-service-boundaries.md](../architecture/01-service-boundaries.md) — who owns writes across Rails/Java/Predict
+- [../rails/01-models.md](../rails/01-models.md) — Ruby-side models and the callbacks bypassed by Java writes
+- [../rails/02-database-schema.md](../rails/02-database-schema.md) — Rails-owned schema these entities map to
+- [../pipelines/01-game-pipeline.md](../pipelines/01-game-pipeline.md) — end-to-end game write flow

@@ -265,3 +265,13 @@ See the routing table above for the exhaustive list. Summary:
 - **Auth pages:** `/sign-in`, `/sign-up`.
 
 All URLs are user-visible and bookmarkable. Filter and pagination state on `Scoreboard` (and increasingly elsewhere) is synced to `useSearchParams`, so page reload preserves view — see `Scoreboard.jsx`'s `updateParams` helper for the pattern (strips defaults to keep URLs clean).
+
+---
+
+## Related docs
+
+- [16-frontend-pages.md](16-frontend-pages.md) — per-page state, API calls, and tabs
+- [17-frontend-components.md](17-frontend-components.md) — reusable UI components
+- [04-api-endpoints.md](04-api-endpoints.md) — JSON endpoints consumed by the SPA
+- [../architecture/02-data-flow.md](../architecture/02-data-flow.md) — request journey from browser to DB
+- [../live/00-overview.md](../live/00-overview.md) — live-scores overlay service

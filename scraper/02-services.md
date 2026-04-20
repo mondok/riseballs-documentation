@@ -247,3 +247,15 @@ flowchart TD
 - **`D1MetricsService`** (`service/D1MetricsService.java`, 1248 LOC) — homepage facts pipeline. Runs 30+ metric queries in parallel on virtual threads and persists one JSON blob per division to `site_metrics.{d1,d2}_facts`. `@Transactional` outer, `computeAll` loops over `[d1, d2]`. Uses `@PersistenceContext EntityManager em` for raw SQL/JPQL `createQuery(...)` access (easier than repos for the analytics-heavy queries). Uses a `volatile String currentDivision` field that private metric methods read — **not thread-safe across different `compute(division)` calls** since computations happen in parallel per division, but since `computeAll` calls them sequentially, this is currently safe. Flag if refactoring.
 - **`NcaaApiClient`** (`service/NcaaApiClient.java`, 196 LOC) — wraps the NCAA GraphQL API at `https://sdataprod.ncaa.com`. Uses a hash-encoded persisted query (`6b26e5cda954c1302873c52835bfd223e169e2068b12511e92b3ef29fac779c2`). Has a `SEONAME_MAP` patch table for known slug mismatches (`mcneese` → `mcneese-st`, `uiw` → `incarnate-word`, `tex-am-commerce` → `east-tex-am`). Rate-limited at 200ms between calls. Returns `NcaaContest{contestId, gameDate, homeSlug, awaySlug, homeScore, awayScore, state, startTimeEpoch}`.
 - **`ReconciliationService`** (the WMT-based one) — see `04-reconciliation.md`.
+
+---
+
+## Related docs
+
+- [01-controllers.md](01-controllers.md) — REST endpoints that invoke these services
+- [03-parsers.md](03-parsers.md) — parser stack consumed by fetchers and schedule sync
+- [../pipelines/01-game-pipeline.md](../pipelines/01-game-pipeline.md) — `ScrapeOrchestrator` in the end-to-end game pipeline
+- [../pipelines/04-standings-pipeline.md](../pipelines/04-standings-pipeline.md) — `StandingsOrchestrator` caller chain
+- [../pipelines/05-roster-pipeline.md](../pipelines/05-roster-pipeline.md) — WMT + Sidearm roster augment flow
+- [../reference/slug-and-alias-resolution.md](../reference/slug-and-alias-resolution.md) — `OpponentResolver` rules used by `TeamScheduleSyncService`
+- [../reference/glossary.md](../reference/glossary.md) — shell link preservation and other terms

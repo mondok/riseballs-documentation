@@ -189,3 +189,11 @@ Point-in-time-safe data pull (line 35):
 - `app/services/scenario_service.py` / `app/explain/key_to_victory_engine.py` responses
 
 Any change to the metric key set (adding/renaming/removing) **must** bump this constant. The model artifacts pin the trained column order in `features.json`; inference does `reindex(columns=...)` + `fillna(0.0)` so a compatible superset of features won't break old artifacts (`prediction_service.py:103`).
+
+## Related docs
+
+- [03-ml-and-artifacts.md](03-ml-and-artifacts.md) — how features feed XGBoost training + inference
+- [06-schemas.md](06-schemas.md) — pydantic shapes for feature-bearing responses
+- [07-config-and-deployment.md](07-config-and-deployment.md) — env vars controlling feature windows + DB access
+- [../pipelines/07-prediction-pipeline.md](../pipelines/07-prediction-pipeline.md) — how Rails invokes this service per matchup
+- [../architecture/02-data-flow.md](../architecture/02-data-flow.md) — upstream warehouse data feeding the builders

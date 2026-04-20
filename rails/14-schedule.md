@@ -164,3 +164,14 @@ Jobs not in the admin UI at all -- enqueue via `bin/rails runner` if you need th
 ... rest of the day: GamePipelineJob + GameDedupJob every 15 min;
     NcaaGameDiscoveryJob every 20 min.
 ```
+
+---
+
+## Related docs
+
+- [12-jobs.md](12-jobs.md) — full job-class reference for everything on the cron table
+- [13-rake-tasks.md](13-rake-tasks.md) — CLI equivalents and one-shot repair tasks
+- [../pipelines/01-game-pipeline.md](../pipelines/01-game-pipeline.md) — GamePipelineJob every 15 min
+- [../pipelines/03-boxscore-pipeline.md](../pipelines/03-boxscore-pipeline.md) — 6 AM BoxScoreBackfillJob run
+- [../pipelines/04-standings-pipeline.md](../pipelines/04-standings-pipeline.md) — 7 AM StandingsRefreshJob run
+- [../operations/runbook.md](../operations/runbook.md) — triage when a scheduled job fails

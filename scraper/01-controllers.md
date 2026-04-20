@@ -172,3 +172,14 @@ Dispatches to `StandingsOrchestrator`. Defaults: `season=2026`, `division="d1"`.
 `D1MetricsService.computeAll()` iterates over `d1` and `d2` divisions, computes ~8+ homepage metrics in parallel via virtual threads, and upserts the JSON blob to `site_metrics` keyed `{division}_facts`.
 
 **Rails caller:** Sidekiq cron `ComputeD1MetricsJob`. Replaces a Ruby implementation that was too slow.
+
+---
+
+## Related docs
+
+- [00-overview.md](00-overview.md) — service topology, stack, Ruby quality gate hazard
+- [02-services.md](02-services.md) — orchestrators backing each controller method
+- [../rails/11-external-clients.md](../rails/11-external-clients.md) — `JavaScraperClient`, the Ruby caller for every endpoint here
+- [../pipelines/01-game-pipeline.md](../pipelines/01-game-pipeline.md) — where `/api/scrape/boxscore` fits in the pipeline
+- [../pipelines/06-reconciliation-pipeline.md](../pipelines/06-reconciliation-pipeline.md) — Rails jobs that drive `/api/reconcile*`
+- [04-reconciliation.md](04-reconciliation.md) — decision trees behind each `/reconcile` controller

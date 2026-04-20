@@ -272,3 +272,10 @@ Key details at each step:
 - `tests/test_ml.py` — labels, time split, model wrappers (synthetic data).
 - `tests/integration/test_predict_endpoint.py` — end-to-end via live DB (skipped if no models loaded).
 - `tests/integration/test_phase6_phase7_endpoints.py` — scenarios + keys + models-current + metrics + cache smoke.
+
+## Related docs
+
+- [02-feature-engineering.md](02-feature-engineering.md) — feature contract + builders feeding the model
+- [05-observability.md](05-observability.md) — predict cache, metrics, log fields around inference
+- [01-endpoints.md](01-endpoints.md) — `/v1/matchups/predict` surface served by these artifacts
+- [../pipelines/07-prediction-pipeline.md](../pipelines/07-prediction-pipeline.md) — end-to-end Rails → predict flow

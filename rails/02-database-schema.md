@@ -680,3 +680,14 @@ Slug-based "soft foreign keys" (application-level, not DB-enforced):
 - `player_game_stats.team_seo_slug` / `opponent_seo_slug` → `teams.slug`
 - `player_war_values.team_seo_slug` → `teams.slug`
 - `plate_appearances.team_slug`, `pitch_events.team_slug` → `teams.slug`
+
+---
+
+## Related docs
+
+- [01-models.md](01-models.md) — ActiveRecord models that back these tables
+- [03-entity-relationships.md](03-entity-relationships.md) — ER diagram + cardinality for these tables
+- [../operations/database-access.md](../operations/database-access.md) — how to connect and query the Postgres DB
+- [../reference/slug-and-alias-resolution.md](../reference/slug-and-alias-resolution.md) — slug-based soft foreign keys explained
+- [../pipelines/01-game-pipeline.md](../pipelines/01-game-pipeline.md) — writes to `games` / `team_games` / `game_team_links`
+- [../pipelines/02-pbp-pipeline.md](../pipelines/02-pbp-pipeline.md) — writes to `plate_appearances` / `pitch_events`
