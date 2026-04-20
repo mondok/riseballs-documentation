@@ -133,7 +133,6 @@ When `Game.state` transitions to `final` during step 2, `Game#enqueue_pbp_refres
 | `PbpOnFinalJob` | Fires from `Game` callback during step 2 | event-triggered |
 | `GameDedupJob` | Parallel safety net for duplicate Games | `*/15 * * * *` |
 | `ScheduleReconciliationJob` | Daily deep reconciliation (does what this does, but in depth against every team) | `0 3 * * *` |
-| `StuckScheduleRecoveryJob` | Hourly — detects teams whose schedules got wiped by empty-payload scrape | `5 * * * *` |
 | `ScoreValidationJob` | Daily score audit after all data settled | `30 8 * * *` |
 
 ---
@@ -142,7 +141,7 @@ When `Game.state` transitions to `final` during step 2, `Game#enqueue_pbp_refres
 
 1. **Java scraper unreachable.** `JavaScraperClient#available?` returns false; `#sync_schedules` returns nil. Step 1 silently skips, the pipeline continues with steps 2–4 using existing DB state. Next run retries.
 2. **Partial sync** (Java scraper returns partial results). Java currently returns partial success — some teams synced, some not. Matcher processes whatever landed.
-3. **Empty schedule payload** for a team (Sidearm rate-limited / returned empty). `StuckScheduleRecoveryJob` (hourly at `:05`) detects this and retriggers that single team's sync.
+3. **Empty schedule payload** for a team (Cloudflare challenge or JS-rendered page). `SidearmScheduleParser` now falls through to localscraper (Playwright) when every direct-HTTP candidate URL returns empty/challenge. Previously this state was papered over by `StuckScheduleRecoveryJob` mirroring rows from the `games` table; that job and its service were removed 2026-04-20 once the fetch path handled every observed Sidearm variant. If a team still syncs empty, it's a new parser / URL / layout case — add a fixture under `riseballs-scraper/src/test/resources/schedule_fixtures/` and extend the parser to match.
 4. **DH instability across syncs.** Historically the #1 cause of game duplication. Root cause was the matcher re-linking shells every sync because Java deletes + reinserts team_games. Fix: shell link preservation (Java snapshots + restores `game_id`). See [scraper/02-services.md](../scraper/02-services.md) `TeamScheduleSyncService`.
 5. **`clean_orphans` removes a game that shouldn't be removed.** The status flipped to `cancelled` by mistake at the source. Operator recovery: wait for next sync (source corrects itself) or manually insert via a rake task. No undo without a scrape.
 

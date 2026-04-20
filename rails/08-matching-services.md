@@ -21,7 +21,7 @@ are the glue between raw ingestion output and the shared scoreboard.
 - [MatchingService (`app/services/matching_service.rb`)](#matchingservice)
 - [TeamMatcher (`app/services/team_matcher.rb`)](#teammatcher)
 - [~~GameIdentityService~~ — DELETED 2026-04-19](#gameidentityservice)
-- [ScheduleRecoveryService (`app/services/schedule_recovery_service.rb`)](#schedulerecoveryservice)
+- [ScheduleRecoveryService — **DELETED 2026-04-20**](#schedulerecoveryservice--deleted)
 - [SeriesGuardService (`app/services/series_guard_service.rb`)](#seriesguardservice)
 - [Read-path services](#read-path-services)
   - [GameShowService](#gameshowservice)
@@ -359,66 +359,45 @@ caching is on the caller.
 
 ---
 
-## ScheduleRecoveryService
+## ScheduleRecoveryService — **DELETED**
 
-**File:** `app/services/schedule_recovery_service.rb` (185 LOC)
-**Called from:** `StuckScheduleRecoveryJob`, `lib/tasks/schedules.rake`.
+**File:** `app/services/schedule_recovery_service.rb` — **removed** 2026-04-20 (mondok/riseballs-scraper#16).
 
-### The bug it recovers from
+The service existed as a "silent wiped schedule" recovery path:
+when a Sidearm schedule scrape returned empty, it mirrored rows from
+the `games` table into `team_games` tagged `source: "schedule-recovery"`
+so the team page wouldn't look broken. By construction this could
+never include games vs opponents Rise doesn't track (non-D1/D2
+midweek games, exhibitions), so every affected team silently ran with
+a missing-wins record — Tampa showed 24-10 on 2026-04-19 when the
+actual record was 27-10.
 
-1. A scheduled scrape returns an empty payload (vendor 404, timeout,
-   playwright-blocked page).
-2. The cached schedule is overwritten with `{games: []}`.
-3. The `team_games` sync runs delete-then-insert on the empty list.
-4. The team's schedule page now shows nothing, but every other team still
-   lists them as opponents in `games`.
+Root cause was upstream in the scraper: `SidearmScheduleParser` only
+tried `/sports/softball/schedule/{year}` and didn't handle the
+event-row card layout, so it returned 0 entries for ~20 teams. Fixed
+in issue #16 (new URL patterns, new `parseEventRowCards` strategy,
+new legacy selector variant, localscraper fallback). Once the primary
+path worked, the recovery workaround became redundant and dangerous
+(its game-table-mirroring logic regressed `east-texas-am` during the
+one-shot cleanup when the safeguard misread "any non-recovery row
+exists").
 
-### Recovery strategy (two-step)
+`StuckScheduleRecoveryJob`, its hourly sidekiq cron entry, and the
+`schedules:recover_stuck` rake task were removed alongside the
+service. Replacement: `schedules:resync_recovery_teams` rake task
+(see `rails/13-rake-tasks.md`) exists as a one-shot that re-syncs
+each affected slug via the Java scraper and leaves authoritative
+data in place; no periodic job runs anymore.
 
-```mermaid
-flowchart TD
-    A[call teamslug] --> B{already populated?}
-    B -- team_games count >= games count --> Z[return :already_populated]
-    B -- fully empty (count 0) --> C[trigger_java_scrape]
-    B -- partially populated --> D[skip scrape, backfill only]
-    C --> E{after scrape,<br/>count >= games?}
-    E -- yes --> F[return :recovered_via_scrape]
-    E -- no --> G[backfill_from_games]
-    D --> G
-    G --> H{rows_added > 0?}
-    H -- yes --> I[return :recovered_via_backfill]
-    H -- no  --> J[return :nothing_to_backfill / :no_source_data]
-```
+The `schedule-recovery` source tag still appears in `team_games`
+rows that existed prior to the fix. Those rows get upserted in place
+by subsequent syncs (their data is now correct even though the tag
+persists). The tag is historical, not load-bearing.
 
-**Why partial + scrape is dangerous:**
-`east-texas-am` on 2026-04-18 had 3 of 51 games. Re-scraping returned only
-the same 3; if we had declared victory we'd lose the other 48. Partial
-means "skip the scrape, backfill from `games`" (lines 67-84).
-
-### `backfill_from_games`
-
-Lines 110-157. Build `TeamGame` rows for this team by mirroring every
-`Game` that references it as home or away. Opposing teams' scrapes already
-populated the `games` table — we just mirror the matchup.
-
-Row shape (lines 168-182): `source: "schedule-recovery"` marks them.
-`opponent_name` uses `Team#name` for the canonical short form.
-Idempotent: skip when the 4-tuple `(team_slug, game_date, opponent_slug,
-game_number)` already exists.
-
-### `stuck_team_slugs`
-
-Lines 36-49. Raw SQL that finds teams with Game rows but zero team_games:
-
-```sql
-SELECT t.slug
-FROM teams t
-WHERE EXISTS (SELECT 1 FROM games g WHERE g.home_team_slug = t.slug OR g.away_team_slug = t.slug)
-  AND NOT EXISTS (SELECT 1 FROM team_games tg WHERE tg.team_slug = t.slug)
-```
-
-`StuckScheduleRecoveryJob` runs this on a periodic schedule and calls
-`.call(slug)` for each result.
+`CachedSchedule.empty_payload?` and `game_count` — helpers that
+were cited as "for `ScheduleRecoveryService`" — stay. They're still
+used inside `CachedSchedule.store` to refuse overwriting a populated
+cache with an empty scrape payload, which is a standalone guard.
 
 ---
 
@@ -498,7 +477,6 @@ Three entrypoints:
 | `GamePipelineJob` (step 2)           | `TeamGameMatcher.match_all`                  |
 | `BoxscoreFetchService` (before/after)| `MatchingService.validate`                   |
 | Anywhere resolving a school name     | `TeamMatcher.find_by_name`                   |
-| `StuckScheduleRecoveryJob`           | `ScheduleRecoveryService.call`               |
 | `lib/tasks/fill_missing_boxscores.rake:89` | `SeriesGuardService.safe_to_cancel?`   |
 | `api/games_controller.rb`            | `GameShowService.*`                          |
 | `TodayGamesService.refresh_today_teams` | `ScheduleService.trigger_background_refresh` |

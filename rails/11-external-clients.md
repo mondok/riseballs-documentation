@@ -124,8 +124,10 @@ end
 | `reconcile_ncaa_dates_check`                  | POST | `/api/reconcile/ncaa-dates/check`     | 1800s   | Dry-run of the above.                                                   |
 | `healthy?`                                    | GET  | `/api/scrape/health`                  | 5s      | Health probe. Returns `true` only if `{status: "ok"}`.                  |
 
-Also used by `ScheduleRecoveryService` (not through this client):
-`POST /api/team-schedule/sync-team` — see the matching-services doc.
+`POST /api/team-schedule/sync-team` and `/sync-all` are called directly
+via `HTTParty` (not through this client) from `GamePipelineJob` and
+the `schedules:resync_recovery_teams` rake task. See `rails/12-jobs.md`
+and `rails/13-rake-tasks.md`.
 
 ### Caller map: jobs/controllers → endpoints
 

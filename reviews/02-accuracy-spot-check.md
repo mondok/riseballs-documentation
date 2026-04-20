@@ -17,7 +17,7 @@ I spot-checked ~30 non-trivial claims across the documentation, targeting claims
 
 ## Verified claims
 
-- All 12 cron expressions in `rails/14-schedule.md` match `config/initializers/sidekiq.rb` exactly (cron string, class name, and the one `active_job: false` entry for `StuckScheduleRecoveryJob`).
+- All 11 cron expressions in `rails/14-schedule.md` match `config/initializers/sidekiq.rb` exactly. (`StuckScheduleRecoveryJob` — the one `active_job: false` entry — was removed 2026-04-20 alongside `ScheduleRecoveryService`; see `rails/08-matching-services.md`.)
 - `PbpOnFinalJob`: `retry_on PbpNotReadyError, wait: :polynomially_longer, attempts: 5` — verified at `pbp_on_final_job.rb:6`.
 - `Game#enqueue_pbp_refresh_if_finalized` at `game.rb:241-244`, with `after_update_commit` at `game.rb:17` — matches.
 - `Admin::JobsController` `ALLOWED_EMAIL = "matt.mondok@gmail.com"` hard-coded at `admin/jobs_controller.rb:3`.

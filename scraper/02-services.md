@@ -80,7 +80,12 @@ Merging logic: when two rows exist for the same player on the same team (e.g., b
    - **Final without boxscoreId (WMT):** upsert by `(teamSlug, gameDate, gameNumber)`.
    - **Unplayed:** fresh insert; restore `gameId` from snapshot.
 
-`extractBoxscoreId(url)` recognizes `/boxscore/(\d+)` for Sidearm and `wmt://(\d+)` for WMT.
+`extractBoxscoreId(url)` recognizes three URL shapes:
+- `/boxscore/(\d+)` — modern Sidearm (numeric id at a singular path)
+- `/boxscores/([^/.?]+)\.xml` — event-row / PrestoSports-on-Sidearm layout (plural path, alphanumeric id like `20260130_5mx5`). Added 2026-04-20 so event-row teams route through the `(team_slug, boxscore_id)` unique-index upsert instead of the ambiguous `(team_slug, gameDate, gameNumber)` fallback, which crashed with `NonUniqueResultException` when prod data had same-day same-gameNumber rows against different opponents.
+- `wmt://(\d+)` — WMT scheme.
+
+Package-private (previously `private`) so `TeamScheduleSyncServiceTest` can exercise each branch directly.
 
 ### `GameCreationService` — the single creation gate
 

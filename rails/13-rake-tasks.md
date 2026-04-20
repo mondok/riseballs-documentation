@@ -112,11 +112,29 @@ Pre-warms stale `CachedSchedule` for all teams with an `athletics_url` that don'
 **File:** `lib/tasks/schedules.rake`
 **Destructive**: `CachedSchedule.delete_all` + deletes games with nil slugs or no `ncaa_game_id`, then re-crawls every team's schedule via `ScheduleService.build_schedule`. Use only when the cache shape changed.
 
-### `rake schedules:recover_stuck`
+### `rake schedules:resync_recovery_teams`
 
 **File:** `lib/tasks/schedules.rake`
-**Env:** `SLUGS=a,b,c` to target specific teams (default: auto-detect via `ScheduleRecoveryService.stuck_team_slugs`). `SKIP_SCRAPE=1` to use games-table backfill only.
-Manual version of `StuckScheduleRecoveryJob`. Logs per-team result and total rows added.
+**Env:** `SLUGS=a,b,c` to target specific teams. Default picks up any
+team currently carrying `team_games.source = "schedule-recovery"` plus
+the 20 known slugs from the 2026-04-20 cleanup (hardcoded in the
+rake file).
+**Requires the Java scraper to be reachable** (`JAVA_SCRAPER_URL`, or
+`http://riseballs-scraper.web:8080` inside Dokku). Use
+`ssh dokku@… enter riseballs web` so the internal hostname resolves.
+
+Replaced `schedules:recover_stuck` 2026-04-20 alongside the deletion
+of `ScheduleRecoveryService` / `StuckScheduleRecoveryJob`. One-shot
+cleanup that re-syncs each slug via `/api/team-schedule/sync-team`,
+prints the before/after row counts, and runs `TeamGameMatcher` at the
+end to relink shells. Sync-before-delete: if the sync returns no
+new non-recovery rows the existing rows are left alone, so a
+temporary scraper / site outage can't wipe a team.
+
+The `source: "schedule-recovery"` tag stays on rows that were
+upserted-in-place (the data is correct even though the tag is
+historical). Subsequent normal syncs keep the tag; nothing relies on
+its value anymore.
 
 ### `rake games:repair`
 

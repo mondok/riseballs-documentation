@@ -338,7 +338,7 @@ See [pipelines/07-prediction-pipeline.md](../pipelines/07-prediction-pipeline.md
 | Box score | WMT API | local scraper HTML | Playwright HTML → plain HTTP → rediscovery | AI LLM extraction |
 | PBP (live) | cached_games | Athletics | WMT | negative cache 503 |
 | PBP (proactive) | `PbpOnFinalJob` w/ polynomial retry | — | — | operator rake task |
-| Schedule | Java `TeamScheduleSyncService` | `ScheduleReconciliationJob` (daily) | `StuckScheduleRecoveryJob` (hourly) | — (Ruby `NcaaScheduleService` + `NcaaScoreboardService` + `EspnScoreboardService` all deleted 2026-04-19) |
+| Schedule | Java `TeamScheduleSyncService` (direct HTTP) | `SidearmScheduleParser` localscraper fallback (when direct fetch is bot-challenged) | `ScheduleReconciliationJob` (daily Java re-scrape) | — (`StuckScheduleRecoveryJob` + Ruby `NcaaScheduleService` / `NcaaScoreboardService` / `EspnScoreboardService` all deleted 2026-04-19/20) |
 | NCAA contest-id backfill | Java `NcaaApiClient` during reconciliation | Rails `NcaaGameDiscoveryJob` (`*/20` + nightly sweep, re-enabled 2026-04-19) | — | — |
 | Live score overlay | `riseballs-live` (NCAA + ESPN reconciled in-process, Caffeine-cached) | fresh 30s → stale 5m → negative 10s inside the overlay | browser fall-through to Rails-only data | — |
 | Team name → slug (Java scraper) | `TeamAlias` | exact slug | name/longName | suffix strip + state abbr |

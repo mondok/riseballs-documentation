@@ -113,11 +113,23 @@ Parsers are registered with `@Order(N)` so both `TeamScheduleSyncService.parseSc
 | Parser | Order | Activation | Notes |
 |--------|-------|-----------|-------|
 | `WmtScheduleParser` | 1 | `athleticsUrl` host ∈ `WMT_DOMAINS` | Calls WMT schedule API `https://api.wmt.games/api/statistics/games?school_id=X&season_academic_year=Y&sport_code=WSB`; boxscore URL encoded as `wmt://{gameId}`. |
-| `SidearmScheduleParser` | 10 | Default fallback for any team with an `athleticsUrl` | Score regex `([WLT]),\s*(\d+)-(\d+)` with optional "(6 inn.)". Date regex `(Jan|Feb|…|Dec)\.?\s+(\d{1,2})`. Iterates schedule HTML blocks, extracts per-game date, opponent link, score, boxscore link. |
+| `SidearmScheduleParser` | 10 | Default fallback for any team with an `athleticsUrl` | Three HTML strategies tried in order: event-row cards (`div.event-row` / `tr.event-row`), modern Sidearm (`s-game-card-standard`), legacy Sidearm (`li.sidearm-schedule-game` OR `li.sidearm-schedule-game-wrapper`). Six candidate URL shapes: `/sports/softball/schedule[/yr]`, `/sports/sball/{yr-1}-{yr2}/schedule[…]`, `/sports/w-softbl/{yr-1}-{yr2}/schedule[…]`. Direct HTTP is primary; localscraper (Playwright) is fallback only if every direct candidate parses empty. Score regex `([WLT]),\s*(\d+)-(\d+)`, date pulled from `aria-label="Softball event: <Month> <Day>"` when the card's `.date` text is a day-only abbreviation. `.nextevent-list` descendants are excluded so the featured-card banner doesn't duplicate the real entry. |
 | `PrestoSportsScheduleParser` | (default) | URL pattern `{base}/sports/sball/{yr-1}-{yr2}/schedule` | HTML tables with boxscore links. Score regex same shape as Sidearm. |
 | `WordPressScheduleParser` | (default) | LSU-style sites with `sport_category_id` + `season_id` in HTML | Prefers the `wp-json` API when available, else parses HTML. |
 
 `SchedulePageParser` (the interface file) is a 12-LOC contract; no dispatcher class — the orchestrator is the dispatcher.
+
+### Fixture-driven regression test (added 2026-04-20)
+
+`src/test/java/.../SidearmScheduleFixturesTest.java` is parameterized over `src/test/resources/schedule_fixtures/fixtures.properties`. Each entry names a slug, athletics URL, layout tag, season year, and optional `expectedWins` / `expectedLosses` (pulled from the page's own `<meta name=description>` Record, which is the source of truth). For every fixture, the test asserts:
+
+- Non-empty parse (unless `skipParseAssertion=true`),
+- Every entry has team slug, date, opponent,
+- When a record is published, wins/losses match exactly.
+
+Adding a team is drop-in: save the live HTML (direct or via localscraper if bot-challenged) under `schedule_fixtures/<slug>.html`, add a `<slug>.*` stanza to `fixtures.properties`, no Java change required. Current coverage: 20 teams including every Sidearm layout variant seen in prod (modern, legacy, legacy-wrapper, event-row div/tr/card, event-row with `e_result` PrestoSports prefix). The harness is the gate for any future parser change — selectors can't be broadened or narrowed without showing the impact here first.
+
+Companion regression: `tampaScheduleDoesNotDuplicateNextEventBanner` asserts exactly one 4/24 Florida Tech entry and exactly two 4/25 entries (real DH), locking down the `.nextevent-list` filter.
 
 ---
 

@@ -442,14 +442,25 @@ If `count == 0` → wiped. Otherwise last-date shows stale.
 **Fix:**
 
 ```sh
-# StuckScheduleRecoveryJob runs hourly at :05 but you can force it
+# Force a sync for a specific team (fastest path)
 ssh dokku@ssh.mondokhealth.com enter riseballs web \
-  'bin/rails runner "StuckScheduleRecoveryJob.new.perform(team_slug: \"<slug>\")"'
+  "SLUGS=<slug> bin/rails schedules:resync_recovery_teams"
 
 # Or full sync via pipeline
 ssh dokku@ssh.mondokhealth.com enter riseballs web \
   'bin/rails runner "GamePipelineJob.perform_now"'
 ```
+
+The resync task syncs FIRST and only rewrites rows once the Java
+scraper returns authoritative data, so a transient scraper outage
+can't wipe a team. Must use `dokku enter` (not `dokku run`) because
+the task talks to the Java scraper on the internal Dokku network.
+
+If the sync returns 0 rows for a team, the culprit is upstream --
+new URL pattern, new HTML layout, or Cloudflare challenge. Add a
+fixture in `riseballs-scraper/src/test/resources/schedule_fixtures/`,
+extend `SidearmScheduleParser` until the fixture test passes, ship
+the parser change, then re-run the resync.
 
 **Verify:** team's `team_games` populated; `/teams/<slug>/schedule` shows games.
 

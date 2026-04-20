@@ -449,7 +449,7 @@ Per-team cached schedule JSON. One row per `team_slug` (unique index). Hardened 
 - **`store(team_slug, payload, allow_empty: false)`** — `cached_schedule.rb:28`. Refuses to overwrite a previously-non-empty cache with an empty payload unless `allow_empty: true`. Logs a warning and returns the pre-existing payload when the guard fires. Retries on `RecordNotUnique`.
 - **`fresh?(team_slug, ttl: 30.minutes)`** — TTL freshness check on `updated_at`.
 - **`stale_data(team_slug)`** — returns payload regardless of freshness (used by recovery paths).
-- **`empty_payload?(payload)`** / **`game_count(payload)`** — helpers for `ScheduleRecoveryService`.
+- **`empty_payload?(payload)`** / **`game_count(payload)`** — the empty-payload guard inside `store`. (Previously cited as "for `ScheduleRecoveryService`"; that service was removed 2026-04-20 but the helpers still guard `store` from replacing populated payloads with empties.)
 
 ---
 

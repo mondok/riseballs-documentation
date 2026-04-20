@@ -19,7 +19,7 @@ Operator reference for every ActiveJob in `app/jobs/`. All jobs run on Sidekiq (
   - [`StaleGameCleanupJob`](#stalegamecleanupjob)
   - [`GhostGameDetectionJob`](#ghostgamedetectionjob)
   - [`TeamAssignmentAuditJob`](#teamassignmentauditjob)
-  - [`StuckScheduleRecoveryJob`](#stuckschedulerecoveryjob)
+  - [`StuckScheduleRecoveryJob` — **DELETED 2026-04-20**](#stuckschedulerecoveryjob--deleted)
 - [Reconciliation with external sources](#reconciliation-with-external-sources)
   - [`NcaaDateReconciliationJob`](#ncaadatereconciliationjob)
   - [`ScheduleReconciliationJob`](#schedulereconciliationjob)
@@ -48,7 +48,7 @@ Operator reference for every ActiveJob in `app/jobs/`. All jobs run on Sidekiq (
 
 File: `app/jobs/application_job.rb` (6 lines).
 
-Every job (except `StuckScheduleRecoveryJob`, which is a raw `Sidekiq::Job`) inherits from `ApplicationJob`:
+Every job inherits from `ApplicationJob`:
 
 ```ruby
 class ApplicationJob < ActiveJob::Base
@@ -253,21 +253,21 @@ Detects games where the cached boxscore's team `seoname` values don't match `gam
 - If no conflict, call `fix_team_slugs`: update `games.home_team_slug/away_team_slug` and any `player_game_stats.team_seo_slug` that matched the old slugs.
 - Ambiguous flag writes `GameReview` with `review_type: "team_mismatch"`.
 
-### `StuckScheduleRecoveryJob`
+### `StuckScheduleRecoveryJob` — **DELETED**
 
-**File:** `app/jobs/stuck_schedule_recovery_job.rb` (42 lines) -- note: not `ApplicationJob`, inherits from `Sidekiq::Job` directly.
-**Queue:** `default`
-**Schedule:** `5 * * * *` (every hour at :05)
-**`sidekiq_options retry: 3`**
-**Trigger:** sidekiq-cron (`active_job: false` -- this one is raw Sidekiq)
+**Removed 2026-04-20 (mondok/riseballs-scraper#16).** The hourly recovery
+loop existed to paper over a bug in `SidearmScheduleParser` where
+several URL patterns / HTML layouts silently returned 0 entries. That
+bug is fixed at the source (new `parseEventRowCards` strategy, extended
+`candidateScheduleUrls`, `li.sidearm-schedule-game-wrapper` selector,
+localscraper fallback), so the "retry hourly hoping it works" safety
+net is no longer needed.
 
-Recovery for the empty-schedule failure mode that silently wiped Tampa and 24 other teams for 3 weeks. Runs hourly -- intentionally cheap (one SQL query) when nothing is broken.
-
-1. `ScheduleRecoveryService.stuck_team_slugs` -- returns slugs where `games` has rows but `team_games` is empty.
-2. For each stuck slug, `ScheduleRecoveryService.call(slug)` -- attempts scrape, falls back to games-table backfill.
-3. Tallies `recovered_via_scrape`, `recovered_via_backfill`, `already_populated` as successes; everything else as failure.
-
-**Logs every recovery attempt** (`warn` when stuck teams found; `info` per team).
+`ScheduleRecoveryService` and `app/jobs/stuck_schedule_recovery_job.rb`
+were removed together. See `rails/08-matching-services.md` for the
+full explanation of why the recovery model was dropped. One-shot
+cleanup uses `rake schedules:resync_recovery_teams`
+(`rails/13-rake-tasks.md`).
 
 ---
 

@@ -111,7 +111,7 @@ Cross-referencing `/Users/mattmondok/Code/riseballs-parent/riseballs/app/service
 
 - **`SeriesGuardService`** — `app/services/series_guard_service.rb`. Mentioned in `rails/08-matching-services.md` TOC but its entry is shallow relative to `TeamGameMatcher`. Given that series-guard logic protects 3-game weekend series from being misclassified as doubleheaders, this deserves more depth.
 - **`PbpTeamSplitter`** — `app/services/pbp_team_splitter.rb`. Described in one paragraph in `rails/06-ingestion-services.md:800`; the roster-based splitting heuristic (how it handles un-identified team IDs, threshold for accepting a split) is not spelled out.
-- **`ScheduleRecoveryService`** — `app/services/schedule_recovery_service.rb`. The `stuck_team_slugs` query and games-table backfill are referenced by `StuckScheduleRecoveryJob` in `rails/12-jobs.md` but the service itself does not have a standalone entry. It IS in the `rails/08-matching-services.md` TOC, and the section exists, so this is minor — the actual per-team backfill behavior may deserve a sentence on what it writes.
+- **`ScheduleRecoveryService`** — **removed 2026-04-20** (mondok/riseballs-scraper#16) along with `StuckScheduleRecoveryJob` and its hourly cron entry. The service's gap was resolved by fixing the upstream parser (new URL patterns, event-row strategy, legacy-wrapper variant, localscraper fallback). No ongoing documentation need.
 
 **Where it should go:** Respective subsections of `rails/06-ingestion-services.md` (for `PbpTeamSplitter`) and `rails/08-matching-services.md` (for `SeriesGuardService`).
 

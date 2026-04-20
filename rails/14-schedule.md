@@ -30,7 +30,6 @@ All cron expressions are evaluated in the server's timezone. Sidekiq-cron treats
 | `*/15 * * * *` | every 15 min | `GamePipelineJob` | Sync team schedules, match team_games into Games, fetch box scores for today/yesterday, clean orphans. Full sync (all teams) only in the 03:00-03:15 slot; other slots sync just teams with unfinished games today. |
 | `*/15 * * * *` | every 15 min | `GameDedupJob` | Detect + merge duplicate Game rows using boxscore fingerprints. 14-day lookback computed via Ruby `Date.current`. `DEDUP_DRY_RUN=1` to preview. |
 | `*/20 * * * *` | every 20 min | `NcaaGameDiscoveryJob` | NCAA GraphQL sync for today + yesterday. **Re-enabled 2026-04-19 (mondok/riseballs#82)** — had been silently disabled since 2026-04-12, dropping `ncaa_contest_id` coverage to ~0%. Recovered to ~92% after re-enable. |
-| `5 * * * *` | hourly at :05 | `StuckScheduleRecoveryJob` | Recover teams whose `team_games` got silently wiped by an empty-payload scrape. Cheap when nothing is broken. |
 | `0 2 * * *` | 2:00 AM daily | `AthleticsUrlDiscoveryJob` | Discover missing `athletics_url` via NCAA school pages. |
 | `0 2 * * *` | 2:00 AM daily (within same slot; distinct job) | `NcaaGameDiscoveryJob` | Nightly full-season NCAA sweep (`mode: "season"`). |
 | `30 2 * * *` | 2:30 AM daily | `NcaaDateReconciliationJob` | Delegate to Java `POST /api/reconcile/ncaa-dates`. Corrects `game_date` against the NCAA GraphQL API. |
@@ -53,7 +52,6 @@ flowchart LR
   subgraph Cron["Cron-triggered"]
     P[GamePipelineJob<br/>every 15 min]
     D[GameDedupJob<br/>every 15 min]
-    S[StuckScheduleRecoveryJob<br/>hourly :05]
     NDR[NcaaDateReconciliationJob<br/>2:30 AM]
     SR[ScheduleReconciliationJob<br/>3:00 AM]
     BB[BoxScoreBackfillJob<br/>6:00 AM]
@@ -136,7 +134,6 @@ Jobs not in the admin UI at all -- enqueue via `bin/rails runner` if you need th
 | Job | Entry point |
 | --- | --- |
 | `GamePipelineJob` | cron only; manual run is rare (just use `bin/rails runner "GamePipelineJob.perform_now"`). |
-| `StuckScheduleRecoveryJob` | cron only; `rake schedules:recover_stuck` is the CLI equivalent. |
 | `GhostGameDetectionJob` | not scheduled, not in admin UI -- only via runner. Slow (90-day lookback). |
 | `TeamAssignmentAuditJob` | not scheduled, not in admin UI -- only via runner. Walks all final+scheduled games. |
 | `ScheduleDiffJob` | not scheduled, not in admin UI -- auditing tool only. |
@@ -165,5 +162,5 @@ Jobs not in the admin UI at all -- enqueue via `bin/rails runner` if you need th
 08:30  ScoreValidationJob
 09:00  ComputeD1MetricsJob
 ... rest of the day: GamePipelineJob + GameDedupJob every 15 min;
-    NcaaGameDiscoveryJob every 20 min; StuckScheduleRecoveryJob at :05 every hour.
+    NcaaGameDiscoveryJob every 20 min.
 ```
