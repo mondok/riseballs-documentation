@@ -2,6 +2,34 @@
 
 Three independent but overlapping reconciliation pipelines live in `reconciliation/`. They all resolve the core question "does our Games table agree with the source of truth?" but each uses a different source of truth and a different decision tree.
 
+## Table of Contents
+
+- [1. Schedule reconciliation — the 592-team pipeline](#1-schedule-reconciliation-the-592-team-pipeline)
+  - [Flow](#flow)
+  - [ScheduleComparisonEngine](#schedulecomparisonengine)
+  - [Action priority (`deduplicateActions`)](#action-priority-deduplicateactions)
+  - [ReconciliationExecutor](#reconciliationexecutor)
+  - [FullReconciliationResult + ReconciliationAction](#fullreconciliationresult--reconciliationaction)
+- [2. WMT cancelled-game reconciliation](#2-wmt-cancelled-game-reconciliation)
+  - [Historical bug this guards against](#historical-bug-this-guards-against)
+  - [Candidate selection](#candidate-selection)
+  - [prioritizeCandidates](#prioritizecandidates)
+  - [Per-candidate flow](#per-candidate-flow)
+  - [WMT_DOMAINS hardcoded list](#wmt_domains-hardcoded-list)
+- [3. NCAA date reconciliation](#3-ncaa-date-reconciliation)
+  - [Why it exists](#why-it-exists)
+  - [Decision tree](#decision-tree)
+  - [Phase 4 (create-or-assign) in detail](#phase-4-create-or-assign-in-detail)
+  - [Create-time enrichment (Phase 3 companion in ScheduleReconciliationOrchestrator)](#create-time-enrichment-phase-3-companion-in-schedulereconciliationorchestrator)
+  - [`verifyDateChange` — team schedules are higher-priority than NCAA](#verifydatechange--team-schedules-are-higher-priority-than-ncaa)
+  - [Series contest ID mismatch guard](#series-contest-id-mismatch-guard)
+  - [`boxScoresMatch` — stat fingerprint](#boxscoresmatch--stat-fingerprint)
+  - [`isEmptyDuplicate` — merge target heuristic](#isemptyduplicate--merge-target-heuristic)
+  - [`NcaaDateReconciliationWriter`](#ncaadatereconciliationwriter)
+  - [Result DTO](#result-dto)
+- [Result DTOs summary](#result-dtos-summary)
+- [Related docs](#related-docs)
+
 | Subsystem | Source of truth | Trigger | Writes |
 |-----------|-----------------|---------|--------|
 | **WMT cancelled-game reconciler** | WMT API + optional schedule page | `POST /api/reconcile` | Updates `games.state`/scores, kicks off box score fetch |
