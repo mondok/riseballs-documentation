@@ -1,0 +1,32 @@
+# Baseline of intentionally stale source-file references.
+# Regenerate with: python3 scripts/check-doc-references.py --write-baseline
+# Each line is a <doc-relative-path>:<source-ref> pair. Remove entries
+# as docs are updated to point at live code.
+
+rails/04-api-endpoints.md:app/controllers/api/live_stats_controller.rb
+rails/06-ingestion-services.md:app/services/espn_scoreboard_service.rb
+rails/06-ingestion-services.md:app/services/game_identity_service.rb
+rails/06-ingestion-services.md:app/services/ncaa_schedule_service.rb
+rails/06-ingestion-services.md:app/services/ncaa_scoreboard_service.rb
+rails/06-ingestion-services.md:app/services/sidearm_stats_service.rb
+rails/06-ingestion-services.md:app/services/stat_broadcast_service.rb
+rails/07-parsers.md:controllers/api/games_controller.rb
+rails/08-matching-services.md:app/services/game_identity_service.rb
+rails/08-matching-services.md:app/services/schedule_recovery_service.rb
+rails/09-analytics-services.md:app/services/stat_broadcast_service.rb
+rails/11-external-clients.md:app/services/espn_scoreboard_service.rb
+rails/11-external-clients.md:app/services/game_identity_service.rb
+rails/11-external-clients.md:app/services/sidearm_stats_service.rb
+rails/11-external-clients.md:app/services/stat_broadcast_service.rb
+rails/12-jobs.md:app/jobs/ncaa_game_discovery_job.rb
+rails/12-jobs.md:app/jobs/schedule_diff_job.rb
+rails/12-jobs.md:app/jobs/stuck_schedule_recovery_job.rb
+rails/13-rake-tasks.md:lib/tasks/clean_teams.rake
+rails/13-rake-tasks.md:lib/tasks/ncaa_discovery.rake
+rails/15-frontend-overview.md:lib/statbroadcast.js
+rails/15-frontend-overview.md:pages/LiveView.jsx
+rails/16-frontend-pages.md:app/javascript/pages/LiveView.jsx
+reviews/02-accuracy-spot-check.md:apps/controllers/api/base_controller.rb
+reviews/02-accuracy-spot-check.md:riseballs-scraper/.../TeamScheduleSyncController.java
+reviews/02-accuracy-spot-check.md:routers/predictions.py
+scraper/03-parsers.md:src/test/java/.../SidearmScheduleFixturesTest.java
