@@ -125,6 +125,9 @@ Three review agents (coverage, accuracy, navigability) audited the docs after in
 **"Why did this game get duplicated?"**
 → [pipelines/06-reconciliation-pipeline.md](pipelines/06-reconciliation-pipeline.md) → [rails/08-matching-services.md](rails/08-matching-services.md) → [operations/runbook.md](operations/runbook.md)
 
+**"How do doubleheaders work?"**
+→ [rails/08-matching-services.md](rails/08-matching-services.md) (`find_opponent_game` priority ladder) → [scraper/02-services.md](scraper/02-services.md) (`TeamScheduleSyncService.normalizeForDedup` assigns `game_number`) → [reference/glossary.md](reference/glossary.md) (DH / Doubleheader entry)
+
 **"What runs at 3 AM?"**
 → [rails/14-schedule.md](rails/14-schedule.md) → [rails/12-jobs.md](rails/12-jobs.md)
 

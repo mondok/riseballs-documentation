@@ -89,7 +89,7 @@ Rails service that converts a cached boxscore blob into normalized `player_game_
 A PBP entry that fails the verb filter (e.g., bare name like `Smith, J.` with no play verb). Rejected by `CachedGame.pbp_quality_ok?` when >50% of plays are garbage.
 
 ### Ghost game
-A `Game` that exists in our DB but doesn't exist on any source page. Detected by `GhostGameDetectionJob`. Deleted by reconciliation only if **both** teams' pages agree.
+A `Game` that exists in our DB but doesn't exist on any source page. Detected by `GhostGameDetectionJob`. Deleted by reconciliation only if **both** teams' pages agree. Also called a **phantom game** — the Java scraper's `/api/schedule/verify` endpoint uses "phantom" in its log line ("is this matchup on the live schedule or is it a phantom?"); same concept.
 
 ### `JavaScraperClient`
 Rails service (`app/services/java_scraper_client.rb`) that wraps HTTP calls to the Java scraper. Uses internal URL `http://riseballs-scraper.web:8080`.
@@ -97,8 +97,14 @@ Rails service (`app/services/java_scraper_client.rb`) that wraps HTTP calls to t
 ### Keys-to-victory
 Per-team top-5 features predicted to most influence win probability. Computed by Predict service's `key_to_victory_engine.py`. See [predict/04-explain-engine.md](../predict/04-explain-engine.md).
 
-### Legacy / deprecated
-Tagged components still in codebase but no longer primary. Examples: `AiWebSearchBoxScoreService` (DEAD), `CloudflareBoxScoreService` (use Java scraper instead), Rails `RosterService` (use Java roster augmentation).
+### Legacy / deprecated / dead
+Badge conventions used throughout the docs to flag retired code paths:
+
+- **DELETED** — gone from the codebase; doc stub retained for link integrity and to explain what replaced it (e.g., `EspnScoreboardService`, `StatBroadcastService`, `LiveStatsController`, `GameIdentityService`).
+- **DEAD** — still in codebase but no live code path invokes it (e.g., `AiWebSearchBoxScoreService`, `AiExtractionFetcher`). Treat as do-not-use; a future cleanup will remove it.
+- **DEPRECATED** — still in use in some paths but should not be used going forward (e.g., Rails `RosterService` — use Java roster augmentation instead; `CloudflareBoxScoreService` — use Java scraper instead).
+
+If you are proposing new work that would use a component so tagged, pick a different approach or ask first.
 
 ### Live (game state)
 `Game.state == "live"`. Scoreboard polling has detected in-progress.
@@ -152,6 +158,9 @@ Rails service (`app/services/predict_service_client.rb`) that calls the Python P
 
 ### Rankings (team)
 Integer `teams.rank` populated by `SyncRankingsJob` from NCAA JSON. Used to strip "#5" prefixes before dedup. (Column is `rank` — don't confuse with the app model accessor.)
+
+### Real play / `COMPLETE_THRESHOLD`
+A PBP entry whose description matches the Java `REAL_PLAY` regex (`singled|doubled|tripled|homered|grounded|flied|struck out|walked|lined|popped|fouled|reached|hit by pitch`). The Java `PbpOrchestrator.COMPLETE_THRESHOLD = 40` real plays are required before a PBP source is accepted as complete. A second, broader `QUALITY_PLAY_VERB` regex is used by the Ruby-side quality gate and mirrors the Rails `PLAY_VERB` constant. See [scraper/02-services.md](../scraper/02-services.md) § Completeness threshold and [pipelines/02-pbp-pipeline.md](../pipelines/02-pbp-pipeline.md).
 
 ### Reconciliation
 Comparison between our DB and source pages to correct drift. Four paths: NCAA contest-id enrichment (every 20 min + nightly), NCAA date reconciliation (2:30 AM daily), schedule reconciliation (3 AM daily), game deduplication (every 15 min). See [pipelines/06-reconciliation-pipeline.md](../pipelines/06-reconciliation-pipeline.md).
