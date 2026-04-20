@@ -144,13 +144,11 @@ Defined on `Settings` (`app/config.py:9-42`):
 
 `Settings` reads from `.env` (see `.env.example` for the template).
 
-## Cross-references
+## Related docs
 
-- `01-endpoints.md` — every FastAPI route with schema + caching + Rails call sites
-- `02-feature-engineering.md` — builders + the features contract
-- `03-ml-and-artifacts.md` — models, training, artifact tree
-- `04-explain-engine.md` — explain-loss + scenarios + keys
-- `05-observability.md` — cache, metrics, logging, middleware
-- `06-schemas.md` — pydantic schemas
-- `07-config-and-deployment.md` — config full dump + Docker + how Rails reaches this
-- Source-of-truth narrative: `/Users/mattmondok/Code/riseballs-parent/riseballs-predict/how_things_work.md`
+- [01-endpoints.md](01-endpoints.md) — every FastAPI route with schema and Rails call sites
+- [02-feature-engineering.md](02-feature-engineering.md) — builders and the feature schema contract
+- [07-config-and-deployment.md](07-config-and-deployment.md) — config, Docker, how Rails reaches this
+- [../architecture/01-service-boundaries.md](../architecture/01-service-boundaries.md) — read-only consumer role across services
+- [../pipelines/07-prediction-pipeline.md](../pipelines/07-prediction-pipeline.md) — end-to-end prediction request flow
+- [../rails/11-external-clients.md](../rails/11-external-clients.md) — `PredictServiceClient` wiring on the Rails side

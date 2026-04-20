@@ -257,3 +257,10 @@ flowchart TD
   K --> L[Filter, sort, cap 5, normalize]
   L --> M[ExplainLossResponse]
 ```
+
+## Related docs
+
+- [01-endpoints.md](01-endpoints.md) — endpoint shapes for keys / scenarios / explain-loss
+- [02-feature-engineering.md](02-feature-engineering.md) — inputs that drive the why / keys engines
+- [06-schemas.md](06-schemas.md) — pydantic response shapes for explain outputs
+- [../rails/16-frontend-pages.md](../rails/16-frontend-pages.md) — GameDetail page renders these explanations

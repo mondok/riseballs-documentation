@@ -341,3 +341,14 @@ The Java scraper writes per-PA and per-event rows directly to these tables. Both
 These normalized tables power analytical scopes like `PlateAppearance.first_pitch_swing` and `PitchEvent.steals`.
 
 See [../pipelines/02-pbp-pipeline.md](../pipelines/02-pbp-pipeline.md) for the full write path from scraper to these tables.
+
+---
+
+## Related docs
+
+- [01-models.md](01-models.md) — full per-model reference with associations
+- [02-database-schema.md](02-database-schema.md) — column-level detail for every entity
+- [../pipelines/01-game-pipeline.md](../pipelines/01-game-pipeline.md) — how `Game`, `TeamGame`, and `GameTeamLink` get created
+- [../pipelines/06-reconciliation-pipeline.md](../pipelines/06-reconciliation-pipeline.md) — detectors that enqueue `GameReview` rows
+- [../architecture/02-data-flow.md](../architecture/02-data-flow.md) — cross-service flow of these entities
+- [../reference/glossary.md](../reference/glossary.md) — terms like `doubleheader`, `locked`, `quality gate`

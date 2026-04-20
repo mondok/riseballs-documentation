@@ -353,3 +353,13 @@ Scenarios are only as accurate as the `games` table:
 This is why the matcher stabilization project (`MEMORY.md`) matters for
 scenarios too: every missed game downstream becomes a bad scenario
 upstream.
+
+---
+
+## Related docs
+
+- [../pipelines/04-standings-pipeline.md](../pipelines/04-standings-pipeline.md) — `ConferenceStanding` rows this service reads from
+- [../reference/conference-tournaments.md](../reference/conference-tournaments.md) — per-conference bracket shapes and tournament formats
+- [../reference/glossary.md](../reference/glossary.md) — clinch indicator, magic number, tournament spots
+- [04-api-endpoints.md](04-api-endpoints.md) — `api/standings_controller` surface that returns this payload
+- [01-models.md](01-models.md) — `ConferenceSource` and `ConferenceStanding` model definitions

@@ -847,3 +847,15 @@ Algorithm:
 - Prefix guard `name_prefix_match?` supports: normal order, swapped
   first/last, single-word (last-only), and an 80%-char-intersection
   fallback for edge cases like Unicode or punctuation variants.
+
+---
+
+## Related docs
+
+- [07-parsers.md](07-parsers.md) — parsers that consume output from these ingestion services
+- [08-matching-services.md](08-matching-services.md) — team/player matchers called by the fallback chain
+- [../pipelines/03-boxscore-pipeline.md](../pipelines/03-boxscore-pipeline.md) — end-to-end box-score fetch pipeline
+- [../pipelines/02-pbp-pipeline.md](../pipelines/02-pbp-pipeline.md) — PBP scraping and quality-gate enforcement
+- [../pipelines/05-roster-pipeline.md](../pipelines/05-roster-pipeline.md) — how `RosterService` and parsers feed rosters
+- [../reference/matching-and-fallbacks.md](../reference/matching-and-fallbacks.md) — full fallback ladders for box score and PBP
+- [../reference/glossary.md](../reference/glossary.md) — terms like `quality gate`, `shell link preservation`

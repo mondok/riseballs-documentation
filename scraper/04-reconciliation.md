@@ -299,3 +299,14 @@ record NcaaDateReconciliationResult(
 | WMT reconciliation | `ReconciliationResult(candidatesFound, repaired, skipped, failed, dryRun, actions[])` with inner `GameAction` | `reconciliation/ReconciliationResult.java` |
 | Schedule reconciliation | `FullReconciliationResult(...)` + action list | `reconciliation/FullReconciliationResult.java` + `ReconciliationAction.java` |
 | NCAA dates | `NcaaDateReconciliationResult(...)` (no per-action list; too many rows) | `reconciliation/NcaaDateReconciliationResult.java` |
+
+---
+
+## Related docs
+
+- [01-controllers.md](01-controllers.md) — `/api/reconcile*` REST endpoints entry points
+- [02-services.md](02-services.md) — `ScrapeOrchestrator` triggered by executor after structural changes
+- [03-parsers.md](03-parsers.md) — schedule parsers + `OpponentResolver` consumed here
+- [../pipelines/06-reconciliation-pipeline.md](../pipelines/06-reconciliation-pipeline.md) — Rails-side jobs that trigger these endpoints
+- [../reference/matching-and-fallbacks.md](../reference/matching-and-fallbacks.md) — match ladder used by `ScheduleComparisonEngine`
+- [../operations/runbook.md](../operations/runbook.md) — how to dry-run, debug, and recover reconciliation

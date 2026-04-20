@@ -412,3 +412,13 @@ Every `debug:*` task is read-only unless noted:
 | `check:dh` | `lib/tasks/check_dh.rake` | Count past/future doubleheaders; flag teams missing future DH. |
 | `stats:check_cancelled` | `lib/tasks/check_cancelled.rake` | Flag cancelled games that WMT still has data for (probably actually played). |
 | `debug_pbp_failures` | `lib/tasks/debug_pbp_failures.rake` | Walk up to 15 bad-PBP games, show why they can't be refetched. |
+
+---
+
+## Related docs
+
+- [12-jobs.md](12-jobs.md) — background job classes many of these rakes mirror
+- [14-schedule.md](14-schedule.md) — cron timetable for the scheduled equivalents
+- [../pipelines/02-pbp-pipeline.md](../pipelines/02-pbp-pipeline.md) — PBP reparse and refetch flow
+- [../pipelines/03-boxscore-pipeline.md](../pipelines/03-boxscore-pipeline.md) — boxscore fetch and backfill paths
+- [../operations/runbook.md](../operations/runbook.md) — when to reach for each repair task

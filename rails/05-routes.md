@@ -184,3 +184,13 @@ Provided by Rails 8's built-in health check controller.
 - **Sidekiq basic auth:** enforced at mount time via `Rack::Auth::Basic` closure, rejecting non-admins.
 - **Admin basic auth:** enforced in each admin controller's own `before_action :authenticate_admin!` / `authenticate_owner!` (NOT via routes).
 - **Browser gate:** `ApplicationController` calls `allow_browser versions: :modern, block: :reject_unsupported_browser`. `reject_unsupported_browser` renders `public/406-unsupported-browser.html` with status 406, UNLESS the User-Agent matches a link-preview bot regex (bot, crawl, spider, externalhit, facebot, whatsapp, telegram, slack, discord, preview, cfnetwork, linkedin, curl, wget).
+
+---
+
+## Related docs
+
+- [04-api-endpoints.md](04-api-endpoints.md) — per-action contracts for every route listed here
+- [12-jobs.md](12-jobs.md) — Sidekiq jobs behind the `/sidekiq` mount
+- [../architecture/01-service-boundaries.md](../architecture/01-service-boundaries.md) — which routes belong to Rails vs other services
+- [../operations/runbook.md](../operations/runbook.md) — operator recipes invoking `/admin/*` endpoints
+- [../operations/deployment.md](../operations/deployment.md) — how routes get exposed on Dokku + Cloudflare

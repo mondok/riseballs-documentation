@@ -231,3 +231,12 @@ Test suite uses **H2 in-memory DB** (`build.gradle` line 28), so `./gradlew test
 - Local: `./riseballs-scraper.log` in the working directory.
 - Dokku: `dokku logs riseballs-scraper -t` (server uses logback rolling — 50 MB per file, 7 files retained).
 - Log files in the repo root (`riseballs-scraper.log.2026-04-*.gz`) are from developer local runs; they're not gitignored but should be.
+
+## Related docs
+
+- [../operations/deployment.md](../operations/deployment.md) — cross-service Dokku deploy process
+- [../operations/database-access.md](../operations/database-access.md) — Postgres link, DATABASE_URL, warehouse access
+- [../operations/runbook.md](../operations/runbook.md) — on-call playbook for this service
+- [06-scheduled-jobs.md](06-scheduled-jobs.md) — concurrency tunables that consume these env vars
+- [00-overview.md](00-overview.md) — service role and high-level boundaries
+- [../architecture/00-system-overview.md](../architecture/00-system-overview.md) — where this service sits in the topology

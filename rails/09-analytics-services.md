@@ -506,3 +506,14 @@ The graph is scoped by `division`, so OWP/OOWP never leak across D1 and D2.
 Replacement: the `riseballs-live` service ([live/00-overview.md](../live/00-overview.md)) handles live-score ingestion via NCAA + ESPN feeds. It does NOT replace the historical StatBroadcast write-path into `cached_games` / `player_game_stats` — live-overlay data is transient and the browser consumes it directly.
 
 The `enrich_with_sb_pitchers` method on `GameStatsExtractor` is still live. Its upstream source changed: `StatBroadcastService.fetch_pitchers` is gone, and `AiBoxScoreService.fetch_pitchers` now emits the same `sb_pitchers` payload shape to drive the same enrichment path. The `sb_pitchers` cache type on `CachedGame` and the `data_source: "sb"` marker on enriched `player_game_stats` rows are historical names - read them as "post-extraction pitcher overlay" rather than literal StatBroadcast data.
+
+---
+
+## Related docs
+
+- [../pipelines/03-boxscore-pipeline.md](../pipelines/03-boxscore-pipeline.md) — boxscore ingest that feeds `GameStatsExtractor`
+- [../pipelines/04-standings-pipeline.md](../pipelines/04-standings-pipeline.md) — standings + RPI downstream of `Game` finals
+- [07-parsers.md](07-parsers.md) — parsers that produce the boxscore JSON consumed here
+- [08-matching-services.md](08-matching-services.md) — `MatchingService` gates extraction; home/away swap detection
+- [../reference/glossary.md](../reference/glossary.md) — WAR, RPI, PGS, quality gate definitions
+- [12-jobs.md](12-jobs.md) — `CalculateRpiJob`, `BoxScoreBackfillJob`, and PGS reaggregation jobs

@@ -482,3 +482,14 @@ Three entrypoints:
 | `TodayGamesService.refresh_today_teams` | `ScheduleService.trigger_background_refresh` |
 
 The former `StatBroadcastService.link_discovered_events` → `GameIdentityService.link_sb_id` edge is gone — both classes were deleted 2026-04-19.
+
+---
+
+## Related docs
+
+- [../pipelines/01-game-pipeline.md](../pipelines/01-game-pipeline.md) — how `TeamGameMatcher` runs inside the pipeline
+- [../reference/matching-and-fallbacks.md](../reference/matching-and-fallbacks.md) — full matcher priority ladders and fallback chains
+- [../reference/glossary.md](../reference/glossary.md) — shell link preservation, locked, doubleheader, `game_number`
+- [../reference/slug-and-alias-resolution.md](../reference/slug-and-alias-resolution.md) — `TeamMatcher` name → team resolution rules
+- [12-jobs.md](12-jobs.md) — `GamePipelineJob` and `GameDedupJob` invoke these services
+- [../operations/runbook.md](../operations/runbook.md) — operator actions when matches or shells misbehave

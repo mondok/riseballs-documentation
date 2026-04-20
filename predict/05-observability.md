@@ -142,3 +142,10 @@ Only the predict endpoint gets the cache because it's the highest-volume surface
 
 - `tests/test_observability.py` — TTL cache behavior (put/get, expiry, LRU eviction), metrics registry counts + percentiles.
 - `tests/integration/test_phase6_phase7_endpoints.py` — verifies predict-endpoint cache hit/miss via repeated POSTs.
+
+## Related docs
+
+- [01-endpoints.md](01-endpoints.md) — which endpoints participate in the cache + metrics surface
+- [07-config-and-deployment.md](07-config-and-deployment.md) — env vars for cache TTL, log level, CORS
+- [../operations/runbook.md](../operations/runbook.md) — incident response using `/v1/metrics` + logs
+- [../pipelines/07-prediction-pipeline.md](../pipelines/07-prediction-pipeline.md) — upstream Rails client behavior on predict failures

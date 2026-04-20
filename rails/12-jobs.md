@@ -449,3 +449,14 @@ Delegates to `JavaScraperClient.scrape_standings(season: season)` -- Java parses
 **Trigger:** sidekiq-cron; also `/admin/jobs`.
 
 Delegates to `JavaScraperClient.compute_d1_metrics`. Logs `metrics_count`. Requires `dokku enter`.
+
+---
+
+## Related docs
+
+- [14-schedule.md](14-schedule.md) — sidekiq-cron schedule and job cadence wiring
+- [../pipelines/01-game-pipeline.md](../pipelines/01-game-pipeline.md) — how `GamePipelineJob` drives the 15-minute cycle
+- [../pipelines/06-reconciliation-pipeline.md](../pipelines/06-reconciliation-pipeline.md) — reconciliation jobs in context
+- [../architecture/02-data-flow.md](../architecture/02-data-flow.md) — data flow across jobs, services, caches
+- [../operations/runbook.md](../operations/runbook.md) — operator actions, dokku enter requirements, job failure recovery
+- [11-external-clients.md](11-external-clients.md) — `JavaScraperClient` endpoints these jobs call

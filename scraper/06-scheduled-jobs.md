@@ -88,3 +88,12 @@ This means the rate limit applies per task, not globally. With `Semaphore(5)` + 
 ## Spring Batch? Quartz?
 
 Neither. The dependency tree is minimal: `spring-boot-starter-web`, `spring-boot-starter-data-jpa`, `postgresql`, `jsoup`, `jackson-databind`. If you need real scheduling or durable work queues, do it in Rails Sidekiq and call this service; don't add Spring Batch.
+
+## Related docs
+
+- [../rails/14-schedule.md](../rails/14-schedule.md) — Rails-side cron that triggers these pipelines
+- [../rails/12-jobs.md](../rails/12-jobs.md) — Sidekiq jobs that call the scraper controllers
+- [02-services.md](02-services.md) — services invoked by the concurrent orchestrators
+- [01-controllers.md](01-controllers.md) — HTTP surface that Rails schedules against
+- [07-config-and-deployment.md](07-config-and-deployment.md) — `maxConcurrentGames` and HikariCP tunables
+- [../pipelines/01-game-pipeline.md](../pipelines/01-game-pipeline.md) — end-to-end flow these concurrent tasks feed
