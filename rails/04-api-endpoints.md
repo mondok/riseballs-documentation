@@ -107,7 +107,8 @@ Action: `Api::GamesController#boxscore` (lines 61-154). Critical endpoint — im
      - **Score-match gate (lines 121-133)**: if the `Game` has a known home/away score, reject any box score whose R-row sums don't match (either orientation).
   7. If the athletics scrape passes, store in `CachedGame`, enqueue pitcher enrichment, render.
   8. **AI fallback (lines 143-151):** `AiWebSearchBoxScoreService.fetch(gid, seo_slugs, game_date: ...)` — last resort. Stored as `ai_boxscore`. NOTE: project memory says this service is dead (see `feedback_no_ai_boxscore_fallback.md`), but the code path remains.
-  9. Returns `503 {"error": "Unable to fetch boxscore data"}` on total failure.
+  9. **On-demand Java scrape (issue #87, 2026-04-19):** if every fallback above returned empty AND `probably_finished?(@game_record)` is true, call `JavaScraperClient.scrape_game(@game_record.id)` synchronously and retry `BoxscoreFetchService.best_from_db`. Gated by a 2-minute dedup key `bs_ondemand:<id>` in `Rails.cache` to prevent hammering. `probably_finished?` private helper: true if `game.final?`, else false for a null-scored doubleheader half (`game.home_score.nil? && game.has_doubleheader_sibling?`), else true if `Time.at(start_time_epoch) < 1.hour.ago`. The DH guard prevents a stuck-scheduled DH game 1 from triggering a scrape that would return DH game 2's boxscore — see [pipelines/03-boxscore-pipeline.md](../pipelines/03-boxscore-pipeline.md) and scraper#11.
+  10. Returns `503 {"error": "Unable to fetch boxscore data"}` on total failure.
 - **Response:** NCAA-style boxscore JSON with `linescores`, `teams`, `players`, `source_url` injected.
 - **Caching:** reads/writes `CachedGame` for `athl_boxscore`, `athl_play_by_play`, `ai_boxscore`. No Rails.cache negative key on this endpoint.
 - **Auth:** public.

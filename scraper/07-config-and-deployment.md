@@ -111,16 +111,18 @@ This is why Dokku "just works" — Dokku injects `DATABASE_URL` after linking th
 
 ## `HttpClientConfig` — the JDK HttpClient bean
 
-**File:** `config/HttpClientConfig.java` (20 LOC). Exposes one `@Bean HttpClient` used by every fetcher and every reconciliation HTTP call:
+**File:** `config/HttpClientConfig.java`. Exposes one `@Bean HttpClient` used by every fetcher and every reconciliation HTTP call:
 
 ```java
 HttpClient.newBuilder()
-    .connectTimeout(Duration.ofSeconds(10))
+    .version(HttpClient.Version.HTTP_1_1)    // scraper#14 — force HTTP/1.1 to avoid
+    .connectTimeout(Duration.ofSeconds(10))  // HTTP/2 + istio-envoy frame corruption
     .followRedirects(HttpClient.Redirect.NORMAL)
     .build();
 ```
 
 Notes:
+- **Version pinned to HTTP/1.1 (scraper#14, shipped 2026-04-19).** The JDK `HttpClient` defaults to HTTP/2; against `api.wmt.games` (behind istio-envoy), large responses (≥ 1-2 MB) were arriving with stray `0x1F` bytes between JSON tokens and blowing up Jackson parsing with `Illegal character ((CTRL-CHAR, code 31))`. Curl and HTTParty (both HTTP/1.1 by default) never saw the issue against the same URLs. Forcing HTTP/1.1 at the bean level fixes every downstream consumer — every `BoxscoreFetcher`, `PbpOrchestrator`, `ReconciliationService`, `StandingsOrchestrator`, and `NcaaApiClient` injects this same bean. The only live integration test in the scraper (`WmtFetcherLiveIT`) hits `api.wmt.games` with this config and asserts the 2.5 MB response parses cleanly.
 - `connectTimeout` is **connect only** — per-request read timeouts are set at the `HttpRequest` level via `.timeout(Duration.ofSeconds(N))` in each fetcher (e.g., 30s for WMT, 120s for LocalScraper/Playwright).
 - No custom SSL, no proxy. Follows redirects in both http→https and https→https, but not the secure redirect policy — matches `Redirect.NORMAL`.
 - `HttpClient` is thread-safe; shared across all virtual threads.
