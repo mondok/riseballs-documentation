@@ -148,6 +148,8 @@ Three review agents (coverage, accuracy, navigability) audited the docs after in
 - Mermaid diagrams are embedded as code fences; GitHub renders them natively.
 - Every "known hazard" or "gotcha" is called out inline with **bold** near the relevant component, not buried in a separate file.
 - "Legacy / fallback only" tags mean the component still exists but is not the primary path (e.g., Cloudflare Playwright services — the Java scraper is primary).
+- Every leaf file ends with a `## Related docs` footer linking into pipelines, architecture, reference, operations, and same-dir siblings — leaves connect back to hubs, not just the other way around.
+- Run `scripts/check-doc-references.py` before doc PRs to catch stale backtick-enclosed source paths. Baseline of intentional stale refs (mostly DELETED ghost stubs) lives in `scripts/.doc-ref-ignore`; regenerate with `--write-baseline` after legitimate renames.
 
 ---
 
