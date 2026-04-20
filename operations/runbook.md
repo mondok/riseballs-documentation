@@ -2,6 +2,26 @@
 
 Common tasks, in priority order. Each one says **symptom → diagnosis → fix → verify**.
 
+## Table of Contents
+
+- [Quick reference](#quick-reference)
+- [PBP missing for a game](#pbp-missing-for-a-game)
+- [Box score missing for a finished game](#box-score-missing-for-a-finished-game)
+- [Wrong box score shown](#wrong-box-score-shown)
+- [Score wrong on a game](#score-wrong-on-a-game)
+- [Game appears duplicated](#game-appears-duplicated)
+- [Doubleheader not splitting](#doubleheader-not-splitting)
+- [Opponent shows as unlinked](#opponent-shows-as-unlinked)
+- [Standings wrong for a team](#standings-wrong-for-a-team)
+- [Prediction panel never shows](#prediction-panel-never-shows)
+- [Roster photo URL malformed](#roster-photo-url-malformed)
+- [Schedule for a team is empty](#schedule-for-a-team-is-empty)
+- [Live overlay not updating](#live-overlay-not-updating)
+- [Admin "Run Job" crashes with NameError](#admin-run-job-crashes-with-nameerror)
+- [CI red](#ci-red)
+- [General debugging cheat sheet](#general-debugging-cheat-sheet)
+- [Related docs](#related-docs)
+
 ---
 
 ## Quick reference

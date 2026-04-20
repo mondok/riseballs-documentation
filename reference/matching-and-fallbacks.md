@@ -2,6 +2,27 @@
 
 Every "try X, then Y, then Z" chain in the system, in one place.
 
+## Table of Contents
+
+- [Box score source fallback (`BoxscoreFetchService`)](#box-score-source-fallback-boxscorefetchservice)
+- [PBP source fallback (inside each box score fetch)](#pbp-source-fallback-inside-each-box-score-fetch)
+- [Opponent/team resolution (Java `OpponentResolver`)](#opponentteam-resolution-java-opponentresolver)
+- [Team resolution (Rails `TeamMatcher`)](#team-resolution-rails-teammatcher)
+- [Opponent-game matching (Rails `TeamGameMatcher#find_opponent_game`)](#opponent-game-matching-rails-teamgamematcherfind_opponent_game)
+- [Schedule parser dispatch (Java)](#schedule-parser-dispatch-java)
+- [Standings parser dispatch (Java)](#standings-parser-dispatch-java)
+- [Roster augmentation dispatch (Java)](#roster-augmentation-dispatch-java)
+- [Sidearm bio parser fallback (Java `BioPageParser`)](#sidearm-bio-parser-fallback-java-biopageparser)
+- [NCAA date action decision (Java `NcaaDateReconciliationService`)](#ncaa-date-action-decision-java-ncaadatereconciliationservice)
+- [Schedule reconciliation action priority (Java `ReconciliationExecutor`)](#schedule-reconciliation-action-priority-java-reconciliationexecutor)
+- [Game dedup fingerprint (Rails `GameDedupJob`)](#game-dedup-fingerprint-rails-gamededupjob)
+- [Score validation verdict (Rails `ScoreValidationJob`)](#score-validation-verdict-rails-scorevalidationjob)
+- [Live-score overlay match ladder (browser, `lib/liveOverlay.js`)](#live-score-overlay-match-ladder-browser-libliveoverlayjs)
+- [Schedule source fallback (Rails)](#schedule-source-fallback-rails)
+- [Predict service request chain (Rails)](#predict-service-request-chain-rails)
+- [Summary table: "if this breaks, try that"](#summary-table-if-this-breaks-try-that)
+- [Cross-references](#cross-references)
+
 ---
 
 ## Box score source fallback (`BoxscoreFetchService`)

@@ -21,6 +21,22 @@ flowchart LR
   N --> O[prediction_cache.put → Response]
 ```
 
+## Table of Contents
+
+- [GET `/v1/health`](#get-v1health)
+- [GET `/v1/ready`](#get-v1ready)
+- [POST `/v1/matchups/predict`](#post-v1matchupspredict)
+- [POST `/v1/matchups/scenarios`](#post-v1matchupsscenarios)
+- [POST `/v1/matchups/keys-to-victory`](#post-v1matchupskeys-to-victory)
+- [POST `/v1/games/explain-loss`](#post-v1gamesexplain-loss)
+- [GET `/v1/models/current`](#get-v1modelscurrent)
+- [GET `/v1/metrics`](#get-v1metrics)
+- [Middleware](#middleware)
+  - [`RequestLoggingMiddleware`](#requestloggingmiddleware)
+  - [`CORSMiddleware`](#corsmiddleware)
+- [Rails integration map](#rails-integration-map)
+- [Related docs](#related-docs)
+
 ---
 
 ## GET `/v1/health`

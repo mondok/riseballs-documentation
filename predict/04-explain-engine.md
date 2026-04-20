@@ -2,6 +2,16 @@
 
 Three engines live under `app/explain/`, each with its own taxonomy version:
 
+## Table of Contents
+
+- [`categories.py` — Explain category catalog](#categoriespy--explain-category-catalog)
+- [`why_engine.py` — Rank and summarize](#why_enginepy--rank-and-summarize)
+- [`scenario_analysis.py` — Perturbation engine](#scenario_analysispy--perturbation-engine)
+- [`key_to_victory_engine.py` — Keys to victory](#key_to_victory_enginepy--keys-to-victory)
+- [End-to-end flow: `/v1/matchups/keys-to-victory`](#end-to-end-flow-v1matchupskeys-to-victory)
+- [Explain-loss flow](#explain-loss-flow)
+- [Related docs](#related-docs)
+
 | Engine | Taxonomy version | Purpose | Entry service |
 |---|---|---|---|
 | `why_engine` | `explain-v1` | Rank reasons a team lost a completed game | `explanation_service.explain_loss` |
