@@ -520,7 +520,7 @@ File: `app/controllers/api/live_stats_controller.rb` — **removed** in mondok/r
 
 ## Api::DashboardController
 
-File: `/Users/mattmondok/Code/riseballs-parent/riseballs/app/controllers/api/dashboard_controller.rb` (84 LOC).
+File: `/Users/mattmondok/Code/riseballs-parent/riseballs/app/controllers/api/dashboard_controller.rb`.
 
 ### GET /api/dashboard
 
@@ -530,7 +530,7 @@ Action: `Api::DashboardController#index`.
 - **Flow:**
   1. Load `current_user.followed_teams` ordered by name.
   2. Today's games: `Game.for_date(Date.current).where("home_team_slug IN (?) OR away_team_slug IN (?)", ...)`. Projected into NCAA-shaped game objects (subset of fields).
-  3. Schedule: per-followed-team `ScheduleService.games_for_team(team)`, flattened and sorted by date.
+  3. Schedule: `TeamGame.where(team_slug: followed_slugs, game_date: (today-7)..(today+14)).where.not(state: "cancelled").includes(:game)`, projected row-by-row with opponent resolution via `Team.where(slug: opp_slugs)`. Same pattern as `Api::TeamsController#schedule`. This replaced the previous per-team `ScheduleService.games_for_team` fan-out (which produced `/games/null` links whenever the scraper-to-DB match failed -- issue #94).
   4. Favorite players: `current_user.favorite_players.includes(:team)`.
 - **Response:** `{ teams: [...], games: [...], schedule: [...], favorite_players: [...] }`.
 - **Caching:** none.

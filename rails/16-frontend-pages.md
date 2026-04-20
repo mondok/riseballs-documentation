@@ -45,7 +45,7 @@ One section per page component under `app/javascript/pages/`. Each entry lists t
 - **Key sub-components:**
   - `<GameCard />` for today's live games.
   - `<FavoritePlayerCard />` for the favorite-players grid.
-  - Inline rows for past/upcoming schedule; past and live rows wrap in a `<Link>` to `/games/:id`, upcoming rows don't.
+  - Inline rows for past/upcoming schedule; past and live rows wrap in a `<Link>` to `/games/:id` **only when `game.game_id` is truthy** (mirrors `TeamDetail.jsx` guard, added in issue #94 to prevent `/games/null` links). Upcoming rows and rows with no linked `Game` render as a plain `<div>`.
 - **Empty state:** if `teams` is empty (no follows), renders a CTA "Find Teams" pointing to `/teams`.
 
 ## Scoreboard
