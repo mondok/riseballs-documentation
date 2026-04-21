@@ -604,7 +604,7 @@ does not match `PLAY_VERB`). Also rejects:
 
 This is the **single source of truth** for PBP quality — `CachedGame.store`,
 `CachedGame.fetch`, `BoxscoreFetchService.pbp_quality_ok?`, and the games
-controller (`controllers/api/games_controller.rb:181`) all funnel through it.
+controller (`app/controllers/api/games_controller.rb:181`) all funnel through it.
 
 ---
 

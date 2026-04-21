@@ -45,7 +45,7 @@ I spot-checked ~30 non-trivial claims across the documentation, targeting claims
 - Negative-cache write `Rails.cache.write("pbp_miss:#{gid}", true, expires_in: 5.minutes)` — verified at `games_controller.rb:191`.
 - Java has zero `@Scheduled` annotations — grep returned no matches, confirming "all cron lives in Rails" claim.
 - Predict TTL cache `TTLCache(ttl_seconds=300.0, max_entries=512)` — verified at `main.py:77` and `observability/cache.py:16-17`.
-- Predict cache key scopes on `model_version` — verified at `routers/predictions.py:22-25`.
+- Predict cache key scopes on `model_version` — verified at `app/api/routers/predictions.py:22-25`.
 - Predict `/v1/health`, `/v1/ready`, `/v1/matchups/predict`, `/v1/matchups/keys-to-victory`, `/v1/matchups/scenarios`, `/v1/games/explain-loss`, `/v1/models/current`, `/v1/metrics` all exist with the prefixes claimed (health: no prefix, predictions: `/matchups`, scenarios: `/matchups`, explanations: `/games`, models: `/models`).
 - `SCENARIOS` tuple in `explain/scenario_analysis.py:137-180` contains exactly 7 entries, so 14 scenarios (7 × 2 teams) is correct.
 - `_confidence_band` at `services/prediction_service.py:122-127` matches documented thresholds (low < 10, medium < 20 or decisiveness < 0.05, else high).
@@ -75,7 +75,7 @@ I spot-checked ~30 non-trivial claims across the documentation, targeting claims
 - **Doc:** `architecture/00-system-overview.md` line 126 (mermaid sequence in "Write: anatomy of a game result").
 - **Claim:** `Rails->>Scraper: POST /api/scrape (team schedules)`.
 - **Reality:** `GamePipelineJob` posts to `/api/team-schedule/sync-all`, not `/api/scrape`. `/api/scrape` is for box scores and PBP. See `game_pipeline_job.rb:51` and `TeamScheduleSyncController.java:22,37`.
-- **Source:** `riseballs/app/jobs/game_pipeline_job.rb:51` (posts to `${base}/api/team-schedule/sync-all`); `riseballs-scraper/.../TeamScheduleSyncController.java:22`.
+- **Source:** `riseballs/app/jobs/game_pipeline_job.rb:51` (posts to `${base}/api/team-schedule/sync-all`); `riseballs-scraper/src/main/java/com/riseballs/scraper/controller/TeamScheduleSyncController.java:22`.
 - **Severity:** medium — would send a new engineer to the wrong controller in Java.
 
 ### Error 4: Wrong cross-reference path for PBP pipeline

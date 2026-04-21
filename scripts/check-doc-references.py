@@ -86,7 +86,7 @@ PREFIX_FALLBACKS = {
 }
 
 
-def resolve(parent: Path, ref: str, doc_subdir: str) -> Optional[Path]:
+def resolve(parent: Path, ref: str, doc_subdir: str, docs: Path) -> Optional[Path]:
     # 1. Cross-repo absolute path (ref starts with a known repo name).
     head = ref.split("/", 1)[0]
     if head in ALL_SERVICES:
@@ -107,6 +107,12 @@ def resolve(parent: Path, ref: str, doc_subdir: str) -> Optional[Path]:
             candidate = parent / repo / (prefix + ref)
             if candidate.is_file():
                 return candidate
+
+    # 4. Self-reference: the docs repo citing one of its own files
+    #    (e.g. README.md pointing at scripts/check-doc-references.py).
+    candidate = docs / ref
+    if candidate.is_file():
+        return candidate
 
     return None
 
@@ -150,7 +156,7 @@ def audit(parent: Path, docs: Path, verbose: bool) -> Tuple[dict, int, set]:
             if ref.endswith(".md"):
                 continue
             total += 1
-            resolved = resolve(parent, ref, doc_subdir)
+            resolved = resolve(parent, ref, doc_subdir, docs)
             if resolved is None:
                 stale[str(rel)].append(ref)
                 stale_keys.add(f"{rel}:{ref}")

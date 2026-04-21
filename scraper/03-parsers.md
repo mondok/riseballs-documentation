@@ -121,7 +121,7 @@ Parsers are registered with `@Order(N)` so both `TeamScheduleSyncService.parseSc
 
 ### Fixture-driven regression test (added 2026-04-20)
 
-`src/test/java/.../SidearmScheduleFixturesTest.java` is parameterized over `src/test/resources/schedule_fixtures/fixtures.properties`. Each entry names a slug, athletics URL, layout tag, season year, and optional `expectedWins` / `expectedLosses` (pulled from the page's own `<meta name=description>` Record, which is the source of truth). For every fixture, the test asserts:
+`src/test/java/com/riseballs/scraper/reconciliation/schedule/SidearmScheduleFixturesTest.java` is parameterized over `src/test/resources/schedule_fixtures/fixtures.properties`. Each entry names a slug, athletics URL, layout tag, season year, and optional `expectedWins` / `expectedLosses` (pulled from the page's own `<meta name=description>` Record, which is the source of truth). For every fixture, the test asserts:
 
 - Non-empty parse (unless `skipParseAssertion=true`),
 - Every entry has team slug, date, opponent,
