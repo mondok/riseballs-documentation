@@ -196,9 +196,16 @@ Duplicated across three files — `ReconciliationService.java`, `service/fetcher
 
 ## 3. NCAA date reconciliation
 
-**Entry:** `POST /api/reconcile/ncaa-dates` / `/check`.
-**Service:** `reconciliation/NcaaDateReconciliationService.java` (470 LOC).
+**Entry:** `POST /api/reconcile/ncaa-dates` / `/check`. Optional `?date=YYYY-MM-DD` switches to a single-date scoped run (Feb 2026+).
+**Service:** `reconciliation/NcaaDateReconciliationService.java`.
 **Writer:** `reconciliation/NcaaDateReconciliationWriter.java` (143 LOC) — separate bean so `@Transactional` proxies work (self-invocation bypasses Spring AOP).
+
+### Scoped vs. full-season
+
+- `service.reconcile(boolean dryRun)` — full season. Fetches every date Feb 6 → May 31 (D1) and Jan 30 → May 31 (D2) via `NcaaApiClient.contestsForSeason()`. ~5 minutes. Scheduled daily at 02:30 UTC (`NcaaDateReconciliationJob`). Catches cross-date moves.
+- `service.reconcile(LocalDate date, boolean dryRun)` — single-date. Fetches only `contestsForDate(date, 1)` + `contestsForDate(date, 2)`, narrows the `gamesByContestId` map to `findByGameDateBetween(date-2, date+2)` so the resolver's ±2-day date-flex still works. ~seconds. Scheduled hourly at `:15` against today + tomorrow (`NcaaDateReconciliationHourlyJob`). Catches NCAA contests that appear mid-day (the scenario behind issue #106).
+
+Both entry points delegate to a shared private `runReconcile(contests, gamesByContestId, dryRun, startMs)` so Phase 3/4/5 logic is identical.
 
 ### Why it exists
 
