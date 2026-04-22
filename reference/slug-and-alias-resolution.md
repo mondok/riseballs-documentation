@@ -15,6 +15,8 @@ As of 2026-04-19 there is also a **third resolver** in `riseballs-live` (`client
 
 The live service has zero DB access so it cannot consult `team_aliases`. There is no longer a mirror of `ESPN_SLUG_OVERRIDES` in the Rails repo — the JSON file in the `riseballs-live` repo is the single canonical home. To add a new ESPN override, edit `riseballs-live/src/main/resources/espn_slug_overrides.json`, rebuild, redeploy. To refresh `known_slugs.txt`, re-export from Rails and commit the new file in `riseballs-live`.
 
+There is also a **narrow fourth resolver**, `AthleticsBoxScoreService#match_name_to_slug` (and its sibling in `BoxScoreParsers::Base`), used only by the Sidearm box-score scraping path to map a scraped team name to one of an already-narrowed pair of candidate `seo_slugs`. It is not general-purpose — callers pass in the two slugs the game is believed to be between, so the resolver's job is disambiguation, not lookup-from-nothing. As of fix #100 (2026-04-22), the order is: slugify-and-exact against the candidates, slugify-and-exact against each candidate's `TeamAlias` rows, then a legacy fuzzy substring fallback. The slugifier (`Shared::NameNormalizer#slugify_name`) drops apostrophes before hyphen substitution so `"St. John's"` → `"st-johns"`.
+
 ---
 
 ## Side-by-side

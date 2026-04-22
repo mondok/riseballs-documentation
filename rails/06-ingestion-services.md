@@ -207,8 +207,16 @@ response. Includes `SidearmHelper`.
 
 #### Gotchas
 
-- `teams_match?` requires BOTH scraped team names to match a known slug/name;
-  prevents wrong-game pulls.
+- `teams_match?` requires BOTH scraped team names to resolve to distinct
+  candidate slugs; prevents wrong-game pulls.
+- `match_name_to_slug` (used by `teams_match?` and by `Base#parse` for seoname
+  assignment) resolves in three passes: slug-exact against
+  `Shared::NameNormalizer#slugify_name` of the scraped name, then slug-exact
+  against slugified `TeamAlias.alias_name` rows, then the legacy fuzzy
+  substring match. The slugifier drops apostrophes *before* hyphen
+  substitution so `"St. John's"` collapses to `"st-johns"` (fix #100 -- the
+  prior substring-only matcher mis-mapped matchups where one team's token
+  lived inside another, e.g. "west" inside "southwestern").
 - `used_urls` query strips other games' `payload->>'source_url'` out of the
   candidate pool so doubleheaders can't reuse a URL.
 - A `clean_play_names` helper lives here too (private, line 157) — identical
