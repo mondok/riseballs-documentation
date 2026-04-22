@@ -20,6 +20,7 @@ Source of truth: `/Users/mattmondok/Code/riseballs-parent/riseballs/config/route
 - [Devise / Auth](#devise--auth)
 - [API Namespace](#api-namespace)
 - [OG Image Endpoints](#og-image-endpoints)
+- [Sitemap](#sitemap)
 - [Health Check](#health-check)
 - [Route Guards & Constraints](#route-guards--constraints)
 
@@ -165,6 +166,37 @@ Defined at `routes.rb:90-91`. Redirect-only; returns a `302` to a CDN image URL 
 |------|------|-------------------|---------|
 | GET  | `/og/players/:slug` | `og_images#player` | `og_player_image` |
 | GET  | `/og/teams/:slug` | `og_images#team` | `og_team_image` |
+
+---
+
+## Sitemap
+
+| Verb | Path | Controller#Action | As-name |
+|------|------|-------------------|---------|
+| GET  | `/sitemap.xml` | `sitemaps#show` | `sitemap` |
+
+Renders the XML inline with `Builder::XmlMarkup` -- no gem, no static
+file, no background job. Contents:
+
+- Root (`/`) plus the top-level SPA pages: `/scoreboard`, `/teams`,
+  `/rankings`, `/rankings/standings`, `/stats`, `/players`.
+- One `<url>` per `Team` with a non-blank slug, ordered by slug, with
+  `<lastmod>` pulled from `teams.updated_at` (ISO 8601, UTC).
+
+Individual player pages are intentionally excluded (high cardinality,
+low SEO value). Revisiting would require a sitemap-index + chunking
+strategy -- the current controller is designed around a small bounded
+set.
+
+`public/robots.txt` advertises the sitemap absolutely:
+
+```
+Sitemap: https://riseballs.com/sitemap.xml
+```
+
+Test coverage: `test/controllers/sitemaps_controller_test.rb` asserts
+200, XML content type, presence of every top-level path, presence of at
+least one team URL, and absence of any `/players/<slug>` entries.
 
 ---
 
