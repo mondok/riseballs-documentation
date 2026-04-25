@@ -94,9 +94,16 @@ Top 5 get byes. Round 1: `6v11`, `7v10`, `8v9`.
 
 Top 4 get byes. Round 1: `5v12`, `6v11`, `7v10`, `8v9`.
 
-### 15-team (SEC, two-bracket)
+### 15-team (SEC)
 
-Top 3 get byes. Two-bracket layout with crossover matchups in later rounds. See `BracketSection` component for visual.
+Five-round single-elimination. Top 4 seeds bye to the Quarterfinals; seeds 5-7 bye to the Second Round.
+
+- **First Round (3 games):** `14v11`, `15v10`, `13v12`
+- **Second Round (4 games):** `6 vs 11/14 winner`, `7 vs 10/15 winner`, `5 vs 12/13 winner`, `8v9`
+- **Quarterfinals (4 games):** `3`, `2`, `4`, `1` each vs a Second Round winner (seed 1 specifically faces the `8/9` winner)
+- **Semifinals → Championship**
+
+Vanderbilt does not sponsor softball, so SEC tournament fields all 15 conference programs.
 
 ### Other sizes (fallback)
 
