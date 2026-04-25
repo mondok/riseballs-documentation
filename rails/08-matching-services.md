@@ -158,6 +158,37 @@ is the *only* pass that creates a fresh Game from scores via
 `create_game_from_single` (line 77). Without this, these games never appear
 on the scoreboard.
 
+### Synthetic-slug protection (riseballs#112)
+
+When `tg.opponent_slug` is `nil` (resolver couldn't find a match) the
+matcher used to fall back to `slugify(tg.opponent_name)`, which produced
+malformed slugs like `"7-auburn-university-montgomery-ala"` for inputs
+that came in with a national ranking prefix ("#7 Auburn University
+Montgomery (Ala.)"). Those slugs persisted on `Game.home_team_slug` /
+`away_team_slug` forever, never matched the canonical `Team`, and silently
+created duplicate Game shells next to the canonical Game.
+
+Two changes prevent this:
+
+1. **`slugify` strips a rank prefix first** (`RANK_PREFIX_RE` matches
+   `^#?\s*\d+\s*[-.\s]+`, `^No\.?\s*\d+\s+`, `^\(\s*\d+\s*\)\s*`). So
+   `slugify("#7 Auburn ...")` no longer produces a `7-`-prefixed slug.
+2. **`canonical_opponent_slug(name)`** routes through TeamAlias (raw +
+   paren-stripped) → `Team.name` exact → `Team.slug` exact → rank-stripped
+   `slugify` in that order. Every call site that previously used
+   `tg.opponent_slug.presence || slugify(tg.opponent_name)` now uses
+   `tg.opponent_slug.presence || canonical_opponent_slug(tg.opponent_name)`
+   — so when the resolver missed but an alias would have caught it, we
+   still land on the canonical slug.
+
+Companion: `lib/tasks/orphan_slugs.rake` (`data:heal_orphan_slugs`)
+migrates any historical `Game` whose home/away slug starts with `^\d+-`
+into its canonical sibling, or rewrites it in place when the rank-stripped
+slug is itself canonical. Use `FORCE_STRIP=true` to also strip the rank
+digit on non-NCAA opponents that don't match a Team — the slug becomes
+"oregon-tech" instead of "1-oregon-tech" so the scoreboard label reads
+cleanly.
+
 ### `find_opponent_game` priority ladder
 
 **File:** `app/services/team_game_matcher.rb:131-169`
@@ -466,6 +497,62 @@ Three entrypoints:
   today with an `athletics_url`, kick off
   `ScheduleService.trigger_background_refresh(team)` as a pre-step to
   `GameSyncJob`.
+
+---
+
+## `TeamGameCrossLinkAuditor` — duplicate-detection service (riseballs#111, #114)
+
+**File:** `app/services/team_game_cross_link_auditor.rb`
+
+A doubleheader between two teams produces FOUR `team_games` rows (one per
+team per game_number). They should agree on which `Game.id` corresponds to
+each `gn` — Team A gn=1 and Team B gn=1 must point at the same Game.
+When they don't, downstream score writes from `update_game_scores` land
+on whichever Game the wrong team_game points to and the scoreboard shows
+inconsistent state across the two halves of the DH.
+
+**Detection (`audit(date) -> [Finding]`):**
+
+1. Group every Game on `date` by `[canonicalize(home_team_slug),
+   canonicalize(away_team_slug)].sort`. `canonicalize` strips a leading
+   `^\d+-` and resolves through `Team.find_by(slug: stripped)` — this is
+   the riseballs#114 fix that lets a malformed orphan slug
+   (`"7-auburn-university-montgomery-ala"`) cluster with its canonical
+   sibling (`"aub-montgomery"`) instead of sitting in a separate group
+   the auditor can't see.
+2. For each group with 2+ Games, pull every team_game whose `game_id` is
+   in the group (NOT by raw slug match — handles orphans).
+3. Group those team_games by `gn`. If a `gn` bucket has team_games
+   pointing to >1 distinct `game_id`, that's an inconsistency.
+
+**Repair (`run(date:, dry_run:)`):**
+
+When confidence is `:high` (every Game has a unique `start_time_epoch`),
+proposes a mapping `gn → game_id` by sorting linked NCAA contests on
+`startTimeEpoch` and matching gn=1 to the earliest. Atomically:
+
+1. Null both Games' `ncaa_contest_id` to free the partial unique index.
+2. Rewrite `Game.game_number` to match the mapping (two-phase via temp
+   values to avoid the (date, home, away, gn) unique index).
+3. Restore each contest_id + epoch to the Game now holding the matching
+   `gn`.
+4. Rewrite `team_games.game_id` so every row for `gn=N` points to
+   `mapping[N]`.
+5. Destroy + recreate `GameTeamLink` rows from the now-correct
+   `team_games` so stale `sidearm_game_id` values don't survive.
+
+**`GamePipelineJob` calls this read-only every 15 minutes for today and
+yesterday and emits `GameReview(review_type: 'team_game_cross_link')`
+rows so admins see drift before users do.**
+
+**Companion rakes (riseballs#112):**
+- `data:heal_orphan_slugs` — find every Game whose home/away slug starts
+  with `^\d+-` and either merge into the canonical sibling or rewrite
+  in place. `FORCE_STRIP=true` strips the rank digit even when no
+  canonical sibling exists (cleans non-NCAA opponent labels).
+- `data:purge_mismatched_boxscores` — delete `athl_boxscore` rows whose
+  linescore totals contradict the linked Game scores. Forces re-fetch
+  through the now-fixed pipeline (parser + `normalizeHomeAway`).
 
 ---
 

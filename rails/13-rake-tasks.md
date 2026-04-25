@@ -136,6 +136,46 @@ upserted-in-place (the data is correct even though the tag is
 historical). Subsequent normal syncs keep the tag; nothing relies on
 its value anymore.
 
+### `rake data:heal_orphan_slugs` (riseballs#112)
+
+**File:** `lib/tasks/orphan_slugs.rake`
+**Env:** `DRY_RUN=true|false` (default `true`); `FORCE_STRIP=true|false` (default `false`).
+Find every Game whose `home_team_slug` or `away_team_slug` starts with a
+rank-digit prefix (`^\d+-`) -- the orphan pattern from the parser bug
+fixed in `OpponentResolver` + `TeamGameMatcher.slugify`. For each:
+
+- Compute the canonical pair: `^\d+-` stripped, then resolved through
+  `Team.find_by(slug: stripped)` with TeamAlias fallback (alias_name
+  matched against the slug-as-display-form, with optional state-code
+  suffix trim restricted to a known list to avoid Oregon-Tech-as-Oregon
+  false positives).
+- If a canonical Game on the same `(date, sorted-canonical-pair, gn)`
+  exists: migrate the orphan's `team_games`, `GameTeamLink`, and
+  `CachedGame` rows to the canonical Game (orphan's payload wins for
+  duplicate `data_type`); copy/promote scores when the orphan has them;
+  destroy the orphan.
+- Else, rewrite the orphan's slugs in place to the canonical form.
+- With `FORCE_STRIP=true`: also strip the `^\d+-` even when no canonical
+  match exists. Used to clean non-NCAA opponent display labels
+  (`1-oregon-tech` → `oregon-tech`) where there's no Team record to
+  resolve against.
+
+Idempotent. Runs in a transaction per orphan. The 2026-04-25 prod sweep
+moved 22 orphans into canonical siblings, rewrote 3 in place, and
+force-stripped 9 -- 34 orphan rank-prefix Games → 0.
+
+### `rake data:purge_mismatched_boxscores` (riseballs#113)
+
+**File:** `lib/tasks/orphan_slugs.rake`
+**Env:** `DRY_RUN=true|false` (default `true`).
+Delete every cached `athl_boxscore` row whose linescore totals (R column
+visit/home) contradict the linked `Game.home_score`/`away_score` (when
+both are non-null). Forces re-fetch through the now-fixed pipeline so
+the next scrape writes via `ScrapeOrchestrator.normalizeHomeAway` and
+the canonical Game orientation wins. The 2026-04-25 sweep cleared 1709
+mismatched rows; running again the same day cleared 2 stragglers cached
+between the dry-run snapshot and the live purge.
+
 ### `rake games:repair`
 
 **File:** `lib/tasks/repair_links.rake`

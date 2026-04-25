@@ -183,6 +183,10 @@ flowchart TD
 
 0. **`aliasLookup.get(cleaned.toLowerCase().trim())`** — highest priority for the name path. Rails admins add rows to `team_aliases` for known mappings (e.g., "Mississippi State" → `mississippi-st`).
 
+   **`RANKING_PREFIX` regex (riseballs#113):** strips `^#?\s*\d+\s*[-.\s]+`, `^No\.?\s*\d+\s+`, `^\(\s*\d+\s*\)\s*`. The `[-.\s]+` form is critical -- without it, a malformed slug like `"7-auburn-..."` re-entering the resolver from another sync wouldn't be re-stripped, the slug would persist, and downstream Game records would carry the rank prefix forever. Adjusting this regex requires `OpponentResolverTest` coverage for every supported form -- the test suite asserts `"#7 X"`, `"7- X"`, `"21. X"`, `"(7) X"` all map to the same canonical slug.
+
+   **Alias re-check after every transform (riseballs#113):** after stripping parens (1b) and inside `doResolveSimple`, the resolver re-checks the alias map before falling back to slug/name match. Without this, the alias table needs an entry for every parenthetical variant of every aliased name (e.g. both `"Auburn University Montgomery"` AND `"Auburn University Montgomery (Ala.)"`). The re-check lets a single base alias cover all parenthetical-state-suffix variants.
+
 1. **Exact slug** — `slugify()` lowercases, normalizes parenthetical (`King (TN)` → `king-tn`), strips periods, replaces non-alphanumerics with hyphens, trims trailing hyphens. Then `teamRepository.findBySlug(slug)`.
 
    1b. **Parenthetical suffix dropping** — if name has `(...)`, also try without it. Covers "Lee University (Tenn.)" → try long_name "Lee University" against `Team.longName`.
