@@ -510,7 +510,18 @@ Generic key/value JSON cache with optional TTL. Used for arbitrary external API 
 
 ### Scopes
 
+- `displayable` — `where(division: DISPLAYABLE_DIVISIONS)` where `DISPLAYABLE_DIVISIONS = %w[d1 d2]`. Used by every browse/list/search/sitemap surface so opponent-only rows (D3, NAIA, nil division) are hidden. **Do not** apply to slug-resolution lookups (`Team.find`, `Team.where(slug: ...)`, association reads) — opponent teams must still render on a D1/D2 team's schedule and on the scoreboard so W/L counts and score cards are correct.
 - `by_division(division)`, `by_conference(conference)`, `search(query)` (ILIKE on name/long_name/slug/abbreviation/nickname), `ranked`
+
+### Visibility rule (added 2026-05-01, mondok/riseballs#181)
+
+Teams outside `DISPLAYABLE_DIVISIONS` exist as foreign keys for boxscores / PBP / TeamGame rows but must never surface in browse UI. Currently scoped through `displayable`:
+
+- `Api::TeamsController#index` — `/api/teams` (every tab, including "All").
+- `Api::TeamsController#conferences` — `/api/conferences` (so dropdowns don't list conferences whose only members are opponent-only schools).
+- `SitemapsController#show` — `/sitemap.xml` (so opponent-only team pages aren't crawled/indexed).
+
+Division-gated controllers (`rankings`, `rpi`, `stats`, `analytics`) already require an explicit `d1` or `d2` param from the frontend and are intentionally **not** scoped through `displayable`; if they ever start accepting a `d3` param they'd need it.
 
 ### Instance Methods
 
