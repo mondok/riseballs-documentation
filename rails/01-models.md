@@ -523,6 +523,19 @@ Teams outside `DISPLAYABLE_DIVISIONS` exist as foreign keys for boxscores / PBP 
 
 Division-gated controllers (`rankings`, `rpi`, `stats`, `analytics`) already require an explicit `d1` or `d2` param from the frontend and are intentionally **not** scoped through `displayable`; if they ever start accepting a `d3` param they'd need it.
 
+#### Actual data shape (verified 2026-05-01 against prod)
+
+Hidden rows are stored as `division IS NULL`, **not** as the strings `'d3'` / `'naia'` / `'juco'`. Production at deploy time:
+
+| Bucket | Count |
+|---|---|
+| `Team.count` | 834 |
+| `Team.displayable.count` (`d1`+`d2`) | 594 |
+| `Team.where(division: nil).count` | 240 |
+| `Team.where.not(division: %w[d1 d2]).count` | 0 |
+
+`where.not(division: %w[...])` excludes NULL by default, which is why that final count is 0. The `displayable` scope (`division IN ('d1','d2')`) excludes NULL correctly. If the Java scraper or a future ingest path starts populating `division` with `'d3'`, `'naia'`, etc. for opponent-only rows, those rows will continue to be hidden by the same scope — no doc/code change needed. Don't write fix-up code that assumes hidden teams have a non-null division string.
+
 ### Instance Methods
 
 - `logo_url` — falls back to `#{NCAA_LOGO_BASE}/#{slug}.svg` (NCAA's CDN) when the column is blank (`team.rb:13`).
