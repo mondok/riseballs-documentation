@@ -199,12 +199,14 @@ All implement `StandingsParser{name(), canParse(parserType), parse(content, conf
 **IMPORTANT:** All three services UPDATE existing Player/Coach rows only. They never create, delete, or rename. A Player/Coach row must already exist from the Rails-side roster seeding before these will touch it. `discoverProfileUrls` (WMT's per-player profile URL discovery) is a prerequisite for the bio-page path.
 
 ### `WmtRosterService` — WMT website-api JSON sync
-**File:** `roster/WmtRosterService.java` (638 LOC)
+**File:** `roster/WmtRosterService.java`
 **Activation:** `isWmtTeam(team)` = true iff team's athletics URL host matches the same `WMT_DOMAINS` constant defined in three places (this file, `WmtFetcher`, `WmtScheduleParser`, `ReconciliationService`). **Extraction candidate** — pull to a single source of truth.
 
 Fetches team roster via the WMT website-api, matches each API player against a DB Player by jersey number (primary) or last name (fallback) within `findByTeamId(team.id)`. Updates: `photo`, `position`, `year`, `height`, `hometown`, `highSchool`, `previousSchool`, `isTransfer`, `profileUrl`. Transfer detection: if `previousSchool` text (case-insensitive, trimmed) matches an entry in the preloaded `knownCollegeNames` set (built from every `Team.name` + `Team.longName` on startup), sets `isTransfer = true`.
 
 Never overwrites: `name`, `firstName`, `id`, `number`, `teamId`.
+
+**Legacy WordPress fallback (`legacyWpSync`):** when `discoverRosterId` returns null because `/website-api/sports` 301s to HTML — i.e. legacy WMT WordPress themes like `arkansasrazorbacks.com` — `syncTeam` switches to the legacy path instead of erroring. It probes `/sport/w-softbl/roster/`, `/sport/softball/roster/`, and `/softball/roster/`, parses the server-rendered `<table>` for `(jersey, full_name, bio_url)` rows via Jsoup (`a[href*=/roster/]`), matches each row to an existing Player by jersey-then-last-name, fetches each bio page (250ms between fetches), and selects the headshot via the first `<img>` whose `alt` text contains the player's last name and "softball". Writes only `photo_url` and `profile_url`; bio-page fields (transfer, social, hometown) are still produced by `RosterAugmentService` against the `profile_url` this method seeds. Tests: `WmtRosterServiceTest.parseLegacyWpRosterIndex_*`, `extractLegacyWpPhotoUrl_*`, `matchLegacyEntryToPlayer_*` with real Arkansas fixtures.
 
 ### `RosterAugmentService` — Sidearm bio + WordPress dispatcher
 **File:** `roster/RosterAugmentService.java` (603 LOC)
