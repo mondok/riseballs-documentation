@@ -215,6 +215,33 @@ Append-only point-in-time snapshots of live game state.
 
 ---
 
+### `game_lineups`
+
+Per-game starting batting order for each team. Schema-only as of `mondok/riseballs#200`; the table stays empty until Java lineup extractors in `mondok/riseballs-scraper#38` ship.
+
+| Column | Type | Nullable | Default | Notes |
+|---|---|---|---|---|
+| `id` | bigserial PK |  |  |  |
+| `game_id` | bigint | NOT NULL |  | FK → `games.id`, ON DELETE CASCADE |
+| `team_slug` | string | NOT NULL |  | Matches `games.home_team_slug` / `games.away_team_slug` |
+| `batting_order` | integer | NOT NULL |  | 1..9 for starters |
+| `player_name` | string | NOT NULL |  | Raw extracted name; resolution to `players.id` is best-effort |
+| `player_id` | bigint |  |  | Optional FK reference to `players.id` (no DB-level FK; resolution may fail) |
+| `position` | string |  |  | e.g. `SS`, `CF`, `DP` |
+| `is_starter` | boolean | NOT NULL | true |  |
+| `source` | string | NOT NULL |  | Provenance tag (e.g. `presto-boxscore`, `sidearm-lineup`) |
+| `extracted_at` | datetime | NOT NULL |  | When the writer parsed the lineup |
+| `created_at` / `updated_at` | datetime | NOT NULL |  |  |
+
+**Indexes**
+
+- `idx_game_lineups_starter_unique` — UNIQUE on `(game_id, team_slug, batting_order)` — one player per slot per team per game.
+- `index_game_lineups_on_player_id` — partial index `WHERE player_id IS NOT NULL`.
+
+**FK:** `game_lineups.game_id → games.id` (`ON DELETE CASCADE`).
+
+---
+
 ## Stats
 
 ### `player_game_stats`
@@ -363,7 +390,9 @@ Maps alternate naming strings to `team_slug`.
 
 Roster entry for a team.
 
-Columns: `name`, `number`, `position`, `year`, `team_id` (NOT NULL), `photo_url`, `profile_url`, `hometown`, `height`, scraped batting/pitching totals (`batting_average`, `on_base_percentage`, `at_bats`, `runs`, `hits`, `rbis`, `walks`, `strikeouts`, `doubles`, `triples`, `home_runs`, `wins`, `losses`, `era`, `appearances`, `innings_pitched`, `strikeouts_pitching`, `saves`, `runs_allowed_pitching`, `earned_runs_pitching`), `first_name`, `previous_school`, `is_transfer` (default false), `twitter_url`, `instagram_url`, `high_school`, `slug`.
+Columns: `name`, `number`, `position`, `year`, `team_id` (NOT NULL), `photo_url`, `profile_url`, `hometown`, `height`, scraped batting/pitching totals (`batting_average`, `on_base_percentage`, `at_bats`, `runs`, `hits`, `rbis`, `walks`, `strikeouts`, `doubles`, `triples`, `home_runs`, `wins`, `losses`, `era`, `appearances`, `innings_pitched`, `strikeouts_pitching`, `saves`, `runs_allowed_pitching`, `earned_runs_pitching`), `first_name`, `previous_school`, `is_transfer` (default false), `twitter_url`, `instagram_url`, `high_school`, `slug`, `bats` (`L`/`R`/`S`, nullable, limit 1), `throws` (`L`/`R`/`S`, nullable, limit 1).
+
+`bats` and `throws` are validated via `inclusion: { in: %w[L R S], allow_nil: true }`. Tables stay empty until Java writers in `mondok/riseballs-scraper#38` populate them; nothing in the Rails app currently writes these columns.
 
 **Indexes**
 
