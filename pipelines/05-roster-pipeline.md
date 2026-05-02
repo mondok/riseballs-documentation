@@ -32,6 +32,7 @@ flowchart TD
 - **Identification:** either `team.wmt_school_id` is set, or the team's domain is in `WMT_DOMAINS` (constant; duplicated across 4 Java files — `WmtFetcher`, `WmtRosterService`, `WmtScheduleParser`, `ReconciliationService`).
 - **Call:** `/website-api/player-rosters` with included relations (photo, classLevel, playerPosition, player).
 - **Populates:** photo, position, year, height, hometown, high school, previous school, transfer status, profile URL.
+- **Legacy WordPress fallback:** when `discoverRosterId` returns null (the site doesn't expose `/website-api/`, e.g. `arkansasrazorbacks.com`), `legacyWpSync` probes `/sport/w-softbl/roster/`, `/sport/softball/roster/`, and `/softball/roster/` for the server-rendered table. Each table row yields `(jersey, full_name, bio_url)`; rows match existing players by jersey-then-last-name, and each bio page is fetched to extract the headshot via the first `<img>` whose `alt` contains both the player's last name and "softball". Writes only `photo_url` and `profile_url`. Per-bio rate limit 250ms. Fixtures and tests live alongside the existing WMT API tests in `WmtRosterServiceTest`.
 
 ### Sidearm bio path (`RosterAugmentService` + `BioPageParser`)
 
