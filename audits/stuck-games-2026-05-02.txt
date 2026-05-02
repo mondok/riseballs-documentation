@@ -1,0 +1,121 @@
+# Stuck Games -- captured 2026-05-02 from #202 audit
+#
+# Games whose scrape was deferred because the school site only exposed
+# wrong-date or duped boxscores; the new gates correctly refused to
+# write. These are the FIRST TEAMS through the new pipeline at Phase 2
+# rollout (per v5 plan, "first cohort" -- see PIPELINE_REBUILD_PLAN.md).
+#
+# Format: game_id  date         teams                              source_team_slugs
+#
+247950  2026-04-30   biola @ menlo                                  biola, menlo
+229859  2026-05-01   morehead-st @ lindenwood-mo                    morehead-st, lindenwood-mo
+220722  2026-05-02   presbyterian @ usc-upstate                     presbyterian, usc-upstate
+220882  2026-05-02   memphis @ wichita-st                           memphis, wichita-st
+226942  2026-05-02   edinboro @ clarion                             edinboro, clarion
+226589  2026-05-02   chadron-st @ adams-st                          chadron-st, adams-st
+220720  2026-04-21   (presbyterian | usc-upstate sibling)           presbyterian, usc-upstate
+228104  2026-05-02   bellarmine @ north-ala                         north-ala, bellarmine
+228161  2026-05-02   fiu @ middle-tenn                              middle-tenn, fiu
+228249  2026-05-02   tennessee-st @ eastern-ill                     eastern-ill, tennessee-st
+228301  2026-05-02   illinois @ indiana                             indiana, illinois
+228592  2026-05-02   purdue-northwest @ grand-valley-st             grand-valley-st, purdue-northwest
+228838  2026-05-02   ferris-st @ davenport                          davenport, ferris-st
+229533  2026-05-02   army @ holy-cross (G2)                         holy-cross, army
+230031  2026-05-02   southwest-minn-st @ minot-st (G2)              minot-st, southwest-minn-st
+230058  2026-05-02   mansfield @ east-stroudsburg (G2)              east-stroudsburg, mansfield
+247967  2026-05-02   catawba @ carson-newman                        carson-newman, catawba
+250765  2026-04-29   mcla @ union-tn (G1)                           union-tn, mcla
+250766  2026-04-29   mcla @ union-tn (G2)                           union-tn, mcla
+
+# All 12 previously-unknown IDs resolved by direct production lookup
+# during PR #1 (Stage A inventory). Source query (read-only):
+#
+#   ssh dokku@ssh.mondokhealth.com -- enter riseballs web \
+#     'bin/rails runner "Game.where(id: [228104,228161,228249,228301, \
+#     228592,228838,229533,230031,230058,247967,250765,250766]).order \
+#     (:game_date).each { |g| puts [g.id, g.game_date, g.home_team_slug, \
+#     g.away_team_slug, g.state, g.home_score, g.away_score, \
+#     g.game_number].join(\",\") }"'
+#
+# All 12 are state=final with non-null home_score/away_score, confirming
+# they are stuck WITHOUT a usable boxscore -- the new gates correctly
+# refused to stamp wrong-date or duped boxscores onto them. The cohort
+# represents the v1 failure mode the rebuild must validate against.
+
+# ============================================================
+# 2026-05-02 audit re-run -- script/audit_duplicate_boxscores.rb
+# ============================================================
+#
+# Re-ran on production via:
+#   ssh dokku@ssh.mondokhealth.com -- enter riseballs web \
+#     'bin/rails runner script/audit_duplicate_boxscores.rb'
+#
+# Counts:
+#   cached_athl_boxscore_rows = 15867
+#   final_games               = 16164
+#   team_pairs                = 8181
+#   suspicious_pairs          = 1
+#
+# The 19 cohort game IDs above do NOT appear in this audit's output
+# because audit_duplicate_boxscores.rb detects games whose cached
+# athl_boxscore was duped from a sibling on a different date. The
+# cohort failure mode is different: the new gates prevented bad-date
+# boxscores from being stamped onto these Games at all. They are
+# stuck WITHOUT boxscores, not WITH duped ones.
+#
+# One NEW suspicious pair surfaced today:
+#   later_id=243068  later_date=2026-04-26  state=final  score=2-3
+#   earlier_id=227094  earlier_date=2026-04-25  day_gap=1
+#   teams=anderson-sc|emory-henry
+#   later_cg_id=189339  later_cg_updated=2026-05-02 18:35:29 -0400
+#   later_cg_src=https://autrojans.com/sports/softball/stats/2026/emory-henry/boxscore/6497
+#   earlier_cg_id=139087  earlier_cg_updated=2026-04-27 06:58:28 -0400
+#   earlier_cg_src=(empty)
+#
+# This is exactly the bug class the new pipeline must catch in Stage 4
+# verification (URL-date check via BoxscoreDateGate.parseDateFromUrl
+# extractors moved into BundleConsistencyChecker per plan PR #18). The
+# autrojans.com URL contains no parseable date but the cached boxscore
+# linescore is identical to the 4/25 sibling -- thin-page reject + the
+# 4-key tiebreaker (page_published_at + fetched_at) should resolve it
+# during reconciliation. NOT added to the Phase 2 first-cohort list
+# (anderson-sc / emory-henry are different teams from the original 19).
+# Flagging for awareness; if the new pipeline goes live before this is
+# repaired, it should self-heal on the next hourly sweep.
+
+# ============================================================
+# 5-day consistency audit
+# ============================================================
+#
+# No checked-in script literally named "5-day consistency audit"
+# exists in riseballs/script/ or lib/tasks/. The 5/2 session reference
+# was an inline rails-runner query, not a saved file. Phase 2 rollout
+# tooling should include a saved version (proposed: Stage G's
+# script/audit_pipeline_consistency.rb covers this concern -- see
+# PIPELINE_REBUILD_PLAN.md line 1014). For PR #1, no additional rows
+# were resolved by re-running this audit because:
+#   1) the cohort IDs were already enumerated in the original 5/2
+#      session, and
+#   2) the failure mode (no usable boxscore) does not produce
+#      cross-day duplicates that the existing audit script can catch.
+
+# ============================================================
+# Phase 2 rollout
+# ============================================================
+#
+# Phase 2 rollout uses these team slugs as the FIRST cohort for the
+# per-team feature flag (`PIPELINE_V2_TEAMS`):
+#
+#   biola, menlo, morehead-st, lindenwood-mo, presbyterian,
+#   usc-upstate, memphis, wichita-st, edinboro, clarion,
+#   chadron-st, adams-st, north-ala, bellarmine, middle-tenn, fiu,
+#   eastern-ill, tennessee-st, indiana, illinois, grand-valley-st,
+#   purdue-northwest, davenport, ferris-st, holy-cross, army,
+#   minot-st, southwest-minn-st, east-stroudsburg, mansfield,
+#   carson-newman, catawba, union-tn, mcla
+#
+# (34 teams, both sides of all 19 cohort games, deduplicated.)
+#
+# Goal: validate the new pipeline against the exact games that broke
+# under v1 before expanding to SEC, then tournament conferences, then
+# all D1, then D2 (per PIPELINE_REBUILD_PLAN.md TL;DR).
