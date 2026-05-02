@@ -17,7 +17,7 @@ Entry points:
 
 Flow per game:
 1. Load `Game` (returns empty if not found).
-2. `loadCachedBoxscore(game)` — skip if a cached `athl_boxscore` exists and its summed runs match `Game.homeScore`/`awayScore`. If cache hit but no cached `athl_play_by_play`, still call `pbpOrchestrator.processPlayByPlay`.
+2. `loadCachedBoxscore(game)` — short-circuit only if BOTH a cached `athl_boxscore` exists with matching summed runs AND `gameLineupRepository.existsByGameId(gameId)` returns true. The lineup gate is intentional: `cached_games` does not store the raw HTML/JSON payload, so `LineupExtractor` can never run against a cache hit. Gating the short-circuit on lineup presence makes already-cached games fall through once to a fresh fetcher run, populates `game_lineups`, then short-circuits normally on subsequent scrapes (self-healing backfill). If short-circuit taken and no cached `athl_play_by_play`, still call `pbpOrchestrator.processPlayByPlay`.
 3. Else, for each fetcher in order:
    - `fetcher.fetch(game, seoSlugs)` → `Optional<BoxscoreData>`.
    - `teamAssignmentVerifier.assignSeonames` + `.verifyAndFix` (mutates the boxscore map in-place).
@@ -25,6 +25,7 @@ Flow per game:
    - On success: `storeCachedBoxscore(game, box, sourceTeamSlug)` → writes JSONB row to `cached_games`, scoped to the specific source team when known (so different teams' source pages don't collide). Before write, `normalizeHomeAway(box, game)` (riseballs#113) compares `boxscore.teams[].isHome` flags and `linescores.visit/home` orientation to `Game.home_team_slug`/`away_team_slug`; when they disagree, swaps the `teams` array and the per-period `visit↔home` columns so the cached payload matches the canonical Game role. `Game.home/away` is treated as the source of truth (consensus across both teams' schedules via `team_games`). The function is a no-op when the boxscore's seonames don't match either side of the Game (defensive — never blindly flip).
    - `gameStatsWriter.write(box, game)` → deletes + reinserts PGS rows.
    - `pbpOrchestrator.processPlayByPlay(game, box)` → see below.
+   - `lineupExtractor.extract(game, boxscoreData)` — sidecar enrichment. Reads the raw payload from `BoxscoreData.rawPayload` (set by WMT/Sidearm parsers), routes to `WmtLineupParser` (JSON, `sSpot` field) or `SidearmLineupParser` (HTML, row order), and upserts up to 10 batting-order rows per team into `game_lineups`. Wrapped in try/catch(Throwable); never propagates. `player_id` follows an immutability rule (NULL → non-NULL only). `team_slug` column holds parser output (caption text or WMT `nameTabular`), not the canonical `teams.slug`.
    - Return boxscore.
 4. If all fetchers fail, return empty.
 
