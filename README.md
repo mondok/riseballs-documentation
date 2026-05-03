@@ -82,7 +82,8 @@ See [architecture/00-system-overview.md](architecture/00-system-overview.md) for
 
 Pipelines are the horizontal view. Each one traces a user-visible feature (or data promise) across all three services.
 
-- [01-game-pipeline.md](pipelines/01-game-pipeline.md) — `GamePipelineJob` (every 15 min): sync, match, backfill, cleanup
+- [00-pipeline-v2.md](pipelines/00-pipeline-v2.md) — **the v2 7-stage DAG (post-rebuild canonical reference)**
+- [01-game-pipeline.md](pipelines/01-game-pipeline.md) — `GamePipelineJob` (every 15 min): sync, match, backfill, cleanup *(legacy; deleted in Phase 3a)*
 - [02-pbp-pipeline.md](pipelines/02-pbp-pipeline.md) — PBP proactive + lazy + reparse paths
 - [03-boxscore-pipeline.md](pipelines/03-boxscore-pipeline.md) — box score fetch fallback chain + discovery gate
 - [04-standings-pipeline.md](pipelines/04-standings-pipeline.md) — Java scrape → ConferenceStanding → scenarios → bracket
@@ -155,6 +156,17 @@ Three review agents (coverage, accuracy, navigability) audited the docs after in
 
 ## Scope disclaimers
 
+- **Pipeline v2 rebuild (in flight, 2026-05-02 onward).** A
+  full ingestion-pipeline rebuild is in progress per
+  `PIPELINE_REBUILD_PLAN.md` v5. The new design is documented at
+  [pipelines/00-pipeline-v2.md](pipelines/00-pipeline-v2.md).
+  Stage A inventory + DDL + backfill + Java DAG scaffold + Rails
+  caller migration + observability + cleanup checklists have all
+  shipped (PRs #1-12, #18-27, #29, #31-35). Phase 2 flag flip is
+  operator-driven; until then, the legacy paths in the docs below
+  are still authoritative for production behavior.
+  See [audits/](audits/) for the inventory, deletion checklists,
+  shadow run report, and the Phase 2 first cohort.
 - This tree snapshots the system as of **2026-04-19**. Major changes that day: the new `riseballs-live` service shipped (mondok/riseballs-live#1); the Ruby StatBroadcast/Sidearm live-stats machinery was deleted (mondok/riseballs#85); `gameID` was decoupled from NCAA contest id; `ncaaContestId` and `gameNumber` were added to the scoreboard response (mondok/riseballs#83); 7 columns + 3 indexes dropped from `games` and `game_team_links`; ghost-game guards added for `ncaa_contest_id`-tagged games; `NcaaGameDiscoveryJob` re-enabled after a week-long outage.
 - Later on **2026-04-19**, four more fixes shipped addressing a user-visible "box score missing" failure mode for WMT-platform games:
   - mondok/riseballs-scraper#11 — `WmtFetcher` now uses the captured `wmt://<id>` from `game_team_links` to call WMT's game-detail endpoint directly, instead of re-querying the schedule and score-matching candidates. Fixes silent doubleheader boxscore swapping.
