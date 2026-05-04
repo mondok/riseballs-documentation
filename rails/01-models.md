@@ -702,11 +702,11 @@ Team coaching staff. `belongs_to :team`. `presence: name`. No other logic. Colum
 
 **File:** `app/models/plate_appearance.rb`
 
-PBP-derived plate appearance. One row per PA. Keyed by `(team_slug, game_source_id)` — note `game_source_id` is a string, not an FK, because PBP rows are written by the Java scraper before a `Game` record necessarily exists.
+PBP-derived plate appearance. One row per PA. Keyed canonically by `game_id` (FK to `games.id`); the partial unique index `idx_pa_canonical_unique` on `(game_id, team_slug, batter_name, inning, half, pa_number_in_game)` enforces one row per physical at-bat per team. The Java scraper sets `game_id` after the canonical `Game` is reconciled.
 
-### Columns (28)
+### Columns (27)
 
-Identity: `team_slug`, `game_source_id`, `game_date`, `opponent`, `is_home`, `inning`, `half`, `outs_before`, `pa_number_in_game`.
+Identity: `team_slug`, `game_id`, `game_date`, `opponent`, `is_home`, `inning`, `half`, `outs_before`, `pa_number_in_game`.
 
 Batter/Pitcher: `batter_name`, `pitcher_name`, `team_batting`.
 
@@ -721,12 +721,12 @@ Result: `result`, `result_category`, `hit_type`, `hit_location`, `play_descripti
 
 ### Validations
 
-- `presence`: `team_slug`, `game_source_id`, `batter_name`, `result`, `inning`, `half`
+- `presence`: `team_slug`, `batter_name`, `result`, `inning`, `half`
 - `numericality`: `inning > 0`
 
 ### Scopes
 
-- `for_team`, `for_game`, `for_batter`
+- `for_team`, `for_game` (matches by `game_id`), `for_batter`
 - `team_batting`, `team_pitching`
 - `with_pitches`, `first_pitch_take`, `first_pitch_swing`
 - `hits`, `outs`, `walks`, `strikeouts` (LIKE 'strikeout%'), `home_runs`
@@ -742,17 +742,17 @@ Result: `result`, `result_category`, `hit_type`, `hit_location`, `play_descripti
 
 **File:** `app/models/pitch_event.rb`
 
-PBP-derived base-running and ancillary events that happen between or within PAs: steals, caught stealing, wild pitches, passed balls, pickoffs, errors, sac bunts, etc. Keyed the same way as `PlateAppearance` (`team_slug` + `game_source_id`).
+PBP-derived base-running and ancillary events that happen between or within PAs: steals, caught stealing, wild pitches, passed balls, pickoffs, errors, sac bunts, etc. Keyed canonically by `game_id` (FK to `games.id`); the partial unique index `idx_pe_canonical_unique` enforces one row per physical event per team.
 
 ### Columns
 
-Identity + position: `team_slug`, `game_source_id`, `game_date`, `inning`, `half`, `after_pa_number`.
+Identity + position: `team_slug`, `game_id`, `game_date`, `inning`, `half`, `after_pa_number`.
 
 Event: `event_type`, `player_name`, `from_base`, `to_base`, `team_event`, `play_description`.
 
 ### Validations
 
-- `presence`: `team_slug`, `game_source_id`, `event_type`, `inning`, `half`
+- `presence`: `team_slug`, `event_type`, `inning`, `half`
 - `numericality`: `inning > 0`
 
 ### Scopes

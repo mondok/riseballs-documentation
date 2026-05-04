@@ -727,95 +727,22 @@ Included into `RosterService` and the Presto parser.
 
 ## PBP Parsing and Repair
 
-### PitchByPitchParser
+PBP parsing now lives entirely in the Java scraper (`riseballs-scraper`) — Rails delegates to it via `JavaScraperClient`. The Java pipeline:
 
-**File:** `app/services/pitch_by_pitch_parser.rb`
+1. Fetches/caches the PBP JSON in `cached_games`.
+2. Parses it into `PlateAppearance` + `PitchEvent` rows keyed by `game_id`.
+3. Deletes any prior rows for that `game_id` and reinserts (the partial unique index `idx_pa_canonical_unique` enforces one row per physical PA per team).
 
-Parses PBP into `PlateAppearance` + `PitchEvent` rows for analytics. Two
-entrypoints:
+The `PbpOnFinalJob` is the Rails-side trigger: when a game transitions to `final`, the job ensures the PBP is cached, then calls `JavaScraperClient.process_game(game.id)` to drive the Java pipeline.
 
-1. **Scrape entrypoint** — `parse_and_store!(team_slug:, game_source_id:, boxscore_url:, ...)`.
-   Fetches the HTML, finds `<table>` elements whose header contains
-   `Play Description`, deduplicates (Sidearm renders some tables twice), walks
-   the DOM for `"Top of 1st"` / `"Bottom of 1st"` headers to assign
-   `inning` / `half` / `team_batting`.
-2. **Cached PBP entrypoint** — `parse_from_cached_pbp!(game:, pbp_data:)`.
-   Consumes the normalized JSON produced by `AthleticsBoxScoreService` or
-   `WmtBoxScoreService`. Matches batters to rosters via `PlayerNameMatcher`
-   to attribute each PA to the correct team. Creates a PA row for each team
-   so both teams' views render correctly.
+For merge-time PA migration (when `GameDedupJob` collapses two `Game` rows into one), Rails calls `JavaScraperClient.pa_rewrite_game_id(from:, to:)` so the loser's PAs are repointed at the keeper, then deduplicated by the partial unique index.
 
-#### Play categorization
+See:
 
-- `SWING_CODES` — Sidearm pitch codes that count as swings (`S F X T L M`).
-  `B/K/H/P` are takes.
-- `RESULT_PATTERNS` — maps verbs to `result` + `category`. Ordered: strikeouts
-  before "struck", `homered` before `doubled`, etc.
-- `EVENT_PATTERNS` — `stole`, `caught_stealing`, `pickoff`, `wild_pitch`,
-  `passed_ball`. Non-PA events that advance/end innings.
-- `non_pa_event?` — excludes these from PA counting. Matches substitutions
-  (`"E. Ross to p for H. Culie"`), pinch runs, pinch hits.
-- `RESULT_VERBS` — strips verb tokens that accidentally get captured as the
-  last name (e.g., `"Christensen, grounded"` → `"Christensen"`).
-- Garbage filter in `parse_from_cached_pbp!` (lines 237-238):
-  - Must match play-verb regex
-    `(singled|doubled|...|hit by|sacrifice|bunted|error|out)`.
-  - Reject lineup entries like `"0 LF Sturgis, Makenna"`.
-
-#### Pitch sequence parsing
-
-Regex `\((\d+)-(\d+)\s+([A-Z]+)\)` matches strings like `"(3-2 BKBFBB)"`.
-Emits `balls`, `strikes`, `pitch_sequence`, `pitches_seen`, `first_pitch`,
-`first_pitch_result`.
-
-#### Hit location extraction
-
-Two passes:
-
-1. `DIRECTIONAL_PATTERNS` — phrases like `"through the left side"` →
-   `shortstop`, `"up the middle"` → `center field`.
-2. `LOCATION_REGEX` — `"to (shortstop|second baseman|...)"` with
-   `LOCATION_NORMALIZE` mapping `ss` → `shortstop`, `1b` → `first base`, etc.
-   Rejects matches preceded by `advanced\s*\z` to avoid capturing runner
-   advancement as hit location.
-
-#### Resolve initial names
-
-`resolve_initial_names(team_slug)` — after all rows are inserted, rewrites
-any `"T. Rogers"` → `"Taylor Rogers"` where there's exactly one full-name
-match ending `" Rogers"` and starting with `"T"`.
-
-### PbpTeamSplitter
-
-**File:** `app/services/pbp_team_splitter.rb`
-
-Fixes cached PBP data where each inning has a single stat group (teams unsplit).
-Non-destructive — returns a modified copy of the input.
-
-#### Strategy 1: boxscore rosters
-
-`build_name_lookup(boxscore_data, away_id, home_id)` — iterates
-`teamBoxscore[*].playerStats[]`, maps each `lastName.downcase` → PBP team ID.
-Team boxscore's `isHome` flag determines which PBP team ID to assign.
-
-#### Strategy 2: Player table fallback
-
-`build_name_lookup_from_players(game, away_id, home_id)` — used by rake tasks
-when no boxscore is available. Pulls all `Player.name` from both Team records
-and uses the last word of each name as the key.
-
-#### Split logic
-
-`split_plays_by_roster(plays, name_to_team, ...)` walks plays in order; when
-the batter's last name resolves to a different `teamId` than the current
-group, starts a new stat group. Plays where no roster match is found flow
-into whichever group is currently active.
-
-`extract_last_name(play_text)` handles three formats:
-
-- `"Last,First verb..."` → `last`
-- `"First Last verb..."` → last word before the verb
-- `"F. LAST verb..."` → last word before the verb
+- `riseballs-scraper/src/main/java/com/riseballs/scraper/service/parser/PbpParser.java` — Java parser
+- `riseballs-scraper/src/main/java/com/riseballs/scraper/service/PbpWriter.java` — DB writer (sole owner of these tables)
+- `riseballs-scraper/src/main/java/com/riseballs/scraper/service/PaRebuildFromCacheController.java` — cache-only rebuild endpoint
+- `riseballs-scraper/src/main/java/com/riseballs/scraper/service/PaRewriteController.java` — merge-time game_id rewrite endpoint
 
 ---
 

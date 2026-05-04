@@ -297,18 +297,16 @@ Pre-computed player WAR/wOBA/FIP per `(player, team, scope, season)`.
 
 PBP-derived plate appearance rows.
 
-Columns (28): `team_slug` (NOT NULL), `game_source_id` (NOT NULL, string — not an FK), `game_date`, `opponent`, `is_home`, `inning` (NOT NULL), `half` (NOT NULL), `outs_before`, `batter_name` (NOT NULL), `pitcher_name`, `team_batting`, `pitch_sequence`, `balls`, `strikes`, `pitches_seen`, `first_pitch`, `first_pitch_result`, `result` (NOT NULL), `result_category`, `hit_location`, `play_description`, `rbis` (default 0), `runners_scored`, `pa_number_in_game`, `hit_type`.
+Columns (27): `team_slug` (NOT NULL), `game_id` (FK to `games.id`), `game_date`, `opponent`, `is_home`, `inning` (NOT NULL), `half` (NOT NULL), `outs_before`, `batter_name` (NOT NULL), `pitcher_name`, `team_batting`, `pitch_sequence`, `balls`, `strikes`, `pitches_seen`, `first_pitch`, `first_pitch_result`, `result` (NOT NULL), `result_category`, `hit_location`, `play_description`, `rbis` (default 0), `runners_scored`, `pa_number_in_game`, `hit_type`.
 
 **Indexes**
 
-- `index_plate_appearances_on_team_slug_and_game_source_id`
+- `idx_pa_canonical_unique` — UNIQUE partial index on `(game_id, team_slug, batter_name, inning, half, pa_number_in_game)` WHERE `game_id IS NOT NULL`. Enforces one row per physical at-bat per team.
+- `index_plate_appearances_on_game_id`
 - `index_plate_appearances_on_team_slug_and_game_date`
 - `index_plate_appearances_on_team_slug_and_batter_name`
 - `index_plate_appearances_on_team_slug_and_first_pitch_result`
-- `index_plate_appearances_on_game_source_id`
 - `index_plate_appearances_on_hit_type`
-
-No unique index (PAs repeat; a game generates many per batter).
 
 ---
 
@@ -316,13 +314,14 @@ No unique index (PAs repeat; a game generates many per batter).
 
 PBP-derived base-running / wild-pitch / passed-ball / pickoff events.
 
-Columns (13): `team_slug` (NOT NULL), `game_source_id` (NOT NULL), `game_date`, `inning` (NOT NULL), `half` (NOT NULL), `event_type` (NOT NULL), `player_name`, `from_base`, `to_base`, `team_event`, `play_description`, `after_pa_number`.
+Columns (12): `team_slug` (NOT NULL), `game_id` (FK to `games.id`), `game_date`, `inning` (NOT NULL), `half` (NOT NULL), `event_type` (NOT NULL), `player_name`, `from_base`, `to_base`, `team_event`, `play_description`, `after_pa_number`.
 
 **Indexes**
 
+- `idx_pe_canonical_unique` — UNIQUE partial index on `(game_id, team_slug, inning, half, event_type, player_name, after_pa_number, from_base, to_base)` WHERE `game_id IS NOT NULL`.
+- `index_pitch_events_on_game_id`
 - `index_pitch_events_on_team_slug_and_event_type`
 - `index_pitch_events_on_team_slug_and_game_date`
-- `index_pitch_events_on_team_slug_and_game_source_id`
 
 ---
 

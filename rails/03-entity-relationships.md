@@ -147,7 +147,7 @@ erDiagram
     PLATE_APPEARANCE {
         bigint id PK
         string team_slug
-        string game_source_id
+        bigint game_id FK
         int inning
         string batter_name
         string result
@@ -156,7 +156,7 @@ erDiagram
     PITCH_EVENT {
         bigint id PK
         string team_slug
-        string game_source_id
+        bigint game_id FK
         int inning
         string event_type
     }
@@ -333,7 +333,7 @@ Blob-storage for the entire scraped PBP JSON. Used by the live-game frontend for
 
 ### Normalized rows: `plate_appearances` and `pitch_events`
 
-The Java scraper writes per-PA and per-event rows directly to these tables. Both are keyed by `(team_slug, game_source_id)` — note `game_source_id` is a **string**, not a FK to `games.id`, because the Java scraper often writes PBP rows before a canonical `Game` record has been reconciled.
+The Java scraper writes per-PA and per-event rows directly to these tables. Both are keyed canonically by `game_id` (FK to `games.id`); a partial unique index (`idx_pa_canonical_unique` / `idx_pe_canonical_unique`) on the canonical key tuple enforces one row per physical PA/event per team. The Java pipeline always reconciles to a `Game` first, so `game_id` is set on every write.
 
 - `plate_appearances` — one row per PA, with first-pitch outcome (`first_pitch`, `first_pitch_result`), pitch sequence, balls/strikes/pitches_seen counts, result category, RBI count, hit location/type.
 - `pitch_events` — one row per ancillary event (steal, caught stealing, wild pitch, passed ball, pickoff, error). The `after_pa_number` column sequences events relative to the preceding PA.
